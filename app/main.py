@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from contextlib import asynccontextmanager
@@ -14,6 +15,7 @@ from app.core.content_policy import init_content_policy
 from app.core.exceptions import ProxyError, proxy_exception_handler
 from app.core.rate_limiter import init_rate_limiter
 from app.db.engine import create_all_tables
+from app.db.analytics import ensure_analytics_view, refresh_analytics_view
 from app.analytics.langfuse import init_langfuse
 from app.llm.client import init_cache, init_llm_client
 from app.metrics.prometheus import metrics_response
@@ -36,6 +38,12 @@ async def lifespan(app: FastAPI):
     # Database
     await create_all_tables()
     log.info("Database tables ready")
+
+    # Analytics materialized view (Postgres only — no-op on SQLite)
+    try:
+        await ensure_analytics_view()
+    except Exception as exc:
+        log.warning("Could not create analytics view", error=str(exc))
 
     # PII
     if settings.pii_enabled:
@@ -84,8 +92,20 @@ async def lifespan(app: FastAPI):
 
     log.info("LLM Proxy ready", host=settings.host, port=settings.port)
 
+    # Hourly analytics refresh (Postgres only — no-op on SQLite)
+    async def _refresh_loop():
+        while True:
+            await asyncio.sleep(3600)
+            try:
+                await refresh_analytics_view()
+            except Exception as exc:
+                log.warning("Analytics view refresh failed", error=str(exc))
+
+    refresh_task = asyncio.create_task(_refresh_loop())
+
     yield
 
+    refresh_task.cancel()
     log.info("Shutting down LLM Proxy")
 
 
