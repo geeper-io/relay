@@ -1,0 +1,81 @@
+LLM Proxy has been deployed.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ACCESS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{{- if .Values.ingress.enabled }}
+  The proxy is available at:
+  {{- range .Values.ingress.hosts }}
+  {{- range .paths }}
+    http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $.Values.ingress.hosts | first | regexFind "[^/]+" }}{{ .path }}
+  {{- end }}
+  {{- end }}
+{{- else if eq .Values.service.type "LoadBalancer" }}
+  Run the following to get the external IP (may take a minute):
+    kubectl get svc --namespace {{ .Release.Namespace }} {{ include "llm-proxy.fullname" . }} -w
+{{- else }}
+  Forward a local port to the service:
+    kubectl port-forward --namespace {{ .Release.Namespace }} svc/{{ include "llm-proxy.fullname" . }} 8000:{{ .Values.service.port }}
+
+  Then access the proxy at http://localhost:8000
+{{- end }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FIRST STEPS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Create your first user and API key (replace <POD> with the proxy pod name):
+
+     kubectl exec --namespace {{ .Release.Namespace }} <POD> -- \
+       python scripts/create_api_key.py \
+         --external-id alice@company.com \
+         --team engineering
+
+2. Make a test request:
+
+     curl http://localhost:8000/v1/chat/completions \
+       -H "Authorization: Bearer llmp-..." \
+       -H "Content-Type: application/json" \
+       -d '{"model":"gpt-4o","messages":[{"role":"user","content":"Hello!"}]}'
+
+3. Check health:
+
+     curl http://localhost:8000/healthz
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  DATABASE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{{- if .Values.postgresql.enabled }}
+  PostgreSQL is running as a subchart. To retrieve the auto-generated password:
+
+    kubectl get secret --namespace {{ .Release.Namespace }} {{ .Release.Name }}-postgresql \
+      -o jsonpath="{.data.password}" | base64 -d
+{{- else }}
+  Using external database: {{ .Values.externalDatabase.url | replace "://" "://***@" | trunc 60 }}...
+{{- end }}
+
+{{- if .Values.redis.enabled }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  REDIS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Redis is running. Rate limiting and caching are automatically
+  configured to use it.
+{{- end }}
+
+{{- if .Values.prometheus.serviceMonitor.enabled }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PROMETHEUS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  A ServiceMonitor has been created. Prometheus will scrape
+  /metrics every {{ .Values.prometheus.serviceMonitor.interval }}.
+{{- end }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  DOCS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Swagger UI:   http://localhost:8000/docs
+  ReDoc:        http://localhost:8000/redoc

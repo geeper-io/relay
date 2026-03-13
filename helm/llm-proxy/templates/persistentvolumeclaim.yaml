@@ -1,0 +1,43 @@
+{{- if .Values.persistence.chroma.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "llm-proxy.chromaPvcName" . }}
+  labels:
+    {{- include "llm-proxy.labels" . | nindent 4 }}
+  {{- with .Values.persistence.chroma.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.chroma.accessMode }}
+  {{- if .Values.persistence.chroma.storageClass }}
+  storageClassName: {{ .Values.persistence.chroma.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.chroma.size }}
+{{- end }}
+---
+{{- if .Values.persistence.knowledgeBase.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "llm-proxy.kbPvcName" . }}
+  labels:
+    {{- include "llm-proxy.labels" . | nindent 4 }}
+  {{- with .Values.persistence.knowledgeBase.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.knowledgeBase.accessMode }}
+  {{- if .Values.persistence.knowledgeBase.storageClass }}
+  storageClassName: {{ .Values.persistence.knowledgeBase.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.knowledgeBase.size }}
+{{- end }}

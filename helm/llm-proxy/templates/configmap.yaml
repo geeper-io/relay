@@ -1,0 +1,89 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "llm-proxy.fullname" . }}-config
+  labels:
+    {{- include "llm-proxy.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    server:
+      host: "0.0.0.0"
+      port: 8000
+      workers: {{ .Values.config.workers }}
+      log_level: {{ .Values.config.logLevel | default "info" | quote }}
+
+    llm:
+      default_model: {{ .Values.config.llm.defaultModel | quote }}
+      allowed_models:
+        {{- range .Values.config.llm.allowedModels }}
+        - {{ . | quote }}
+        {{- end }}
+      fallback_models:
+        {{- range .Values.config.llm.fallbackModels }}
+        - {{ . | quote }}
+        {{- end }}
+      model_aliases:
+        {{- range $k, $v := .Values.config.llm.modelAliases }}
+        {{ $k }}: {{ $v | quote }}
+        {{- end }}
+      per_model_max_tokens:
+        {{- range $k, $v := .Values.config.llm.perModelMaxTokens }}
+        {{ $k }}: {{ $v }}
+        {{- end }}
+
+    rag:
+      enabled: {{ .Values.config.rag.enabled }}
+      top_k: {{ .Values.config.rag.topK }}
+      score_threshold: {{ .Values.config.rag.scoreThreshold }}
+      embedding_model: {{ .Values.config.rag.embeddingModel | default "all-MiniLM-L6-v2" | quote }}
+      context_prefix: "Relevant internal documentation:\n\n"
+      context_separator: "\n\n---\n\n"
+
+    pii:
+      enabled: {{ .Values.config.pii.enabled }}
+      score_threshold: {{ .Values.config.pii.scoreThreshold }}
+      entities:
+        {{- range .Values.config.pii.entities }}
+        - {{ . }}
+        {{- end }}
+
+    rate_limiting:
+      enabled: {{ .Values.config.rateLimiting.enabled }}
+      {{- if .Values.redis.enabled }}
+      backend: "redis"
+      {{- else }}
+      backend: {{ .Values.config.rateLimiting.backend | quote }}
+      {{- end }}
+      redis_url: ""
+      defaults:
+        requests_per_minute: {{ .Values.config.rateLimiting.defaults.requestsPerMinute }}
+        tokens_per_minute: {{ .Values.config.rateLimiting.defaults.tokensPerMinute }}
+        tokens_per_day: {{ .Values.config.rateLimiting.defaults.tokensPerDay }}
+
+    content_policy:
+      enabled: {{ .Values.config.contentPolicy.enabled }}
+      max_input_tokens: {{ .Values.config.contentPolicy.maxInputTokens }}
+      blocked_patterns:
+        {{- range .Values.config.contentPolicy.blockedPatterns }}
+        - {{ . | quote }}
+        {{- end }}
+
+    cache:
+      enabled: {{ .Values.config.cache.enabled }}
+      {{- if .Values.redis.enabled }}
+      type: "redis"
+      {{- else }}
+      type: {{ .Values.config.cache.type | quote }}
+      {{- end }}
+      ttl: {{ .Values.config.cache.ttl }}
+      {{- if .Values.redis.enabled }}
+      redis_host: {{ include "llm-proxy.redisHost" . | quote }}
+      redis_port: 6379
+      {{- else }}
+      redis_host: "localhost"
+      redis_port: 6379
+      {{- end }}
+
+    analytics:
+      enabled: {{ .Values.config.analytics.enabled }}
+      provider: {{ .Values.config.analytics.provider | quote }}

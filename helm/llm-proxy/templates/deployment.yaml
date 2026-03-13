@@ -1,0 +1,205 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "llm-proxy.fullname" . }}
+  labels:
+    {{- include "llm-proxy.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "llm-proxy.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        # Roll the deployment when the ConfigMap or either Secret changes
+        checksum/config:     {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret:     {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        checksum/masterkey:  {{ include (print $.Template.BasePath "/secret-master-key.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "llm-proxy.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "llm-proxy.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+
+          # ── Environment variables ──────────────────────────────────────────
+          env:
+            # Config file location
+            - name: CONFIG_FILE
+              value: /app/config/config.yaml
+
+            # ── Master key (dedicated secret) ────────────────────────────────
+            - name: PROXY_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "llm-proxy.masterKeySecretName" . }}
+                  key: PROXY_MASTER_KEY
+
+            # ── API keys (main secret) ───────────────────────────────────────
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "llm-proxy.secretName" . }}
+                  key: OPENAI_API_KEY
+                  optional: true
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "llm-proxy.secretName" . }}
+                  key: ANTHROPIC_API_KEY
+                  optional: true
+            - name: AZURE_OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "llm-proxy.secretName" . }}
+                  key: AZURE_OPENAI_API_KEY
+                  optional: true
+            - name: AZURE_OPENAI_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "llm-proxy.secretName" . }}
+                  key: AZURE_OPENAI_ENDPOINT
+                  optional: true
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "llm-proxy.secretName" . }}
+                  key: GOOGLE_CLIENT_ID
+                  optional: true
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "llm-proxy.secretName" . }}
+                  key: GOOGLE_CLIENT_SECRET
+                  optional: true
+            - name: AUTH_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "llm-proxy.secretName" . }}
+                  key: AUTH_BASE_URL
+                  optional: true
+            - name: LANGFUSE_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "llm-proxy.secretName" . }}
+                  key: LANGFUSE_PUBLIC_KEY
+                  optional: true
+            - name: LANGFUSE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "llm-proxy.secretName" . }}
+                  key: LANGFUSE_SECRET_KEY
+                  optional: true
+            - name: LANGFUSE_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "llm-proxy.secretName" . }}
+                  key: LANGFUSE_HOST
+                  optional: true
+
+            # ── Database URL ─────────────────────────────────────────────────
+            {{- if .Values.externalDatabase.url }}
+            # External DB: DATABASE_URL stored in the proxy Secret
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "llm-proxy.secretName" . }}
+                  key: DATABASE_URL
+            {{- else if .Values.postgresql.enabled }}
+            # Bundled PostgreSQL: construct URL using the Bitnami-generated password
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ printf "%s-postgresql" .Release.Name }}
+                  key: password
+            - name: DATABASE_URL
+              value: "postgresql+asyncpg://{{ .Values.postgresql.auth.username }}:$(POSTGRES_PASSWORD)@{{ include "llm-proxy.postgresHost" . }}:5432/{{ .Values.postgresql.auth.database }}"
+            {{- end }}
+
+            # ── Redis URL (when redis subchart is enabled) ────────────────────
+            {{- if .Values.redis.enabled }}
+            {{- if .Values.redis.auth.enabled }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ printf "%s-redis" .Release.Name }}
+                  key: redis-password
+            - name: RATE_LIMITING__REDIS_URL
+              value: "redis://:$(REDIS_PASSWORD)@{{ include "llm-proxy.redisHost" . }}:6379"
+            {{- else }}
+            - name: RATE_LIMITING__REDIS_URL
+              value: "redis://{{ include "llm-proxy.redisHost" . }}:6379"
+            {{- end }}
+            {{- end }}
+
+          # ── Probes ─────────────────────────────────────────────────────────
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+
+          # ── Resources ──────────────────────────────────────────────────────
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
+          # ── Volume mounts ──────────────────────────────────────────────────
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+            {{- if .Values.persistence.chroma.enabled }}
+            - name: chroma
+              mountPath: /app/chroma_data
+            {{- end }}
+            {{- if .Values.persistence.knowledgeBase.enabled }}
+            - name: knowledge-base
+              mountPath: /app/knowledge_base
+            {{- end }}
+
+      # ── Volumes ─────────────────────────────────────────────────────────────
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "llm-proxy.fullname" . }}-config
+        {{- if .Values.persistence.chroma.enabled }}
+        - name: chroma
+          persistentVolumeClaim:
+            claimName: {{ include "llm-proxy.chromaPvcName" . }}
+        {{- end }}
+        {{- if .Values.persistence.knowledgeBase.enabled }}
+        - name: knowledge-base
+          persistentVolumeClaim:
+            claimName: {{ include "llm-proxy.kbPvcName" . }}
+        {{- end }}
+
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

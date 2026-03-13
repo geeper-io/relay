@@ -1,0 +1,245 @@
+# Default values for llm-proxy.
+
+replicaCount: 1
+# NOTE: replicaCount > 1 requires ReadWriteMany storage for chroma and
+# knowledgeBase PVCs (NFS, EFS, Azure Files, etc.) since the embedded
+# ChromaDB instance writes to the local filesystem. With RWO storage,
+# use replicaCount: 1 and rely on uvicorn --workers for concurrency.
+
+image:
+  repository: llm-proxy
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  fsGroup: 1001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+
+# ── Proxy configuration ────────────────────────────────────────────────────────
+# Non-secret settings. Mounted as /app/config/config.yaml via ConfigMap.
+config:
+  workers: 4
+  logLevel: "info"
+
+  llm:
+    defaultModel: "gpt-4o"
+    allowedModels:
+      - "gpt-4o"
+      - "gpt-4o-mini"
+      - "claude-3-5-sonnet-20241022"
+      - "claude-3-haiku-20240307"
+    fallbackModels: []
+    modelAliases: {}
+    # perModelMaxTokens:
+    #   gpt-4o: 8192
+    perModelMaxTokens: {}
+
+  rag:
+    enabled: true
+    topK: 5
+    scoreThreshold: 0.4
+    embeddingModel: "all-MiniLM-L6-v2"
+
+  pii:
+    enabled: true
+    scoreThreshold: 0.7
+    entities:
+      - PERSON
+      - EMAIL_ADDRESS
+      - PHONE_NUMBER
+      - CREDIT_CARD
+      - US_SSN
+      - IP_ADDRESS
+      - LOCATION
+
+  rateLimiting:
+    enabled: true
+    # backend is automatically set to "redis" when redis.enabled=true
+    backend: "memory"
+    defaults:
+      requestsPerMinute: 60
+      tokensPerMinute: 100000
+      tokensPerDay: 1000000
+
+  contentPolicy:
+    enabled: true
+    maxInputTokens: 32000
+    blockedPatterns:
+      - "ignore previous instructions"
+      - "ignore all previous"
+      - "jailbreak"
+
+  cache:
+    enabled: false
+    # type is automatically set to "redis" when redis.enabled=true
+    type: "local"
+    ttl: 3600
+
+  analytics:
+    enabled: false
+    provider: "langfuse"
+
+# ── Secrets ───────────────────────────────────────────────────────────────────
+# When secrets.create=true a Secret is created from the values below.
+# For production, set secrets.create=false and provide secrets.existingSecret
+# (the name of a pre-existing Secret with the same keys).
+secrets:
+  create: true
+  existingSecret: ""
+
+  # Master key — stored in a separate secret, never accepted in plain text.
+  # Leave empty to auto-generate on first install (recommended).
+  # Set to the name of a pre-existing Secret that contains PROXY_MASTER_KEY
+  # to bring your own (Vault, Sealed Secrets, External Secrets Operator, etc.).
+  existingMasterKeySecret: ""
+
+  openaiApiKey: ""
+  anthropicApiKey: ""
+  azureOpenaiApiKey: ""
+  azureOpenaiEndpoint: ""
+
+  # Google OAuth portal — leave empty to disable /auth/login
+  googleClientId: ""
+  googleClientSecret: ""
+  authBaseUrl: ""                    # e.g. https://llm-proxy.internal
+
+  # Langfuse analytics
+  langfusePublicKey: ""
+  langfuseSecretKey: ""
+  langfuseHost: ""                   # empty = Langfuse Cloud; set for self-hosted
+
+# ── External database ─────────────────────────────────────────────────────────
+# Set externalDatabase.url to skip the bundled PostgreSQL subchart.
+externalDatabase:
+  url: ""  # e.g. postgresql+asyncpg://user:pass@host:5432/llm_proxy
+
+# ── Persistence ───────────────────────────────────────────────────────────────
+persistence:
+  chroma:
+    enabled: true
+    storageClass: ""         # "" = cluster default
+    accessMode: ReadWriteOnce
+    size: 10Gi
+    annotations: {}
+
+  knowledgeBase:
+    enabled: true
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 5Gi
+    annotations: {}
+
+# ── Service ───────────────────────────────────────────────────────────────────
+service:
+  type: ClusterIP
+  port: 8000
+
+# ── Ingress ───────────────────────────────────────────────────────────────────
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: llm-proxy.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  # - secretName: llm-proxy-tls
+  #   hosts:
+  #     - llm-proxy.example.com
+
+# ── Resources ─────────────────────────────────────────────────────────────────
+# spaCy en_core_web_lg loads ~800 MB; allow headroom for concurrent requests.
+resources:
+  requests:
+    cpu: 500m
+    memory: 1500Mi
+  limits:
+    cpu: "2"
+    memory: 3Gi
+
+# ── Autoscaling ───────────────────────────────────────────────────────────────
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+  # targetMemoryUtilizationPercentage: 80
+
+# ── Probes ────────────────────────────────────────────────────────────────────
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 60   # allow time for spaCy model to load
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: http
+  initialDelaySeconds: 60
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# ── Prometheus ────────────────────────────────────────────────────────────────
+prometheus:
+  serviceMonitor:
+    enabled: false
+    interval: "15s"
+    scrapeTimeout: "10s"
+    # Namespace to create the ServiceMonitor in (defaults to release namespace)
+    namespace: ""
+    labels: {}
+    # release: prometheus
+
+# ── Bundled PostgreSQL (Bitnami) ──────────────────────────────────────────────
+postgresql:
+  enabled: true
+  auth:
+    username: proxy
+    password: ""           # auto-generated when empty; retrieve with: kubectl get secret ...
+    database: llm_proxy
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+
+# ── Bundled Redis (Bitnami) ───────────────────────────────────────────────────
+# Enable for multi-worker rate limiting and/or response caching.
+redis:
+  enabled: false
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: true
+      size: 2Gi
+
+# ── Scheduling ────────────────────────────────────────────────────────────────
+nodeSelector: {}
+tolerations: []
+affinity: {}
