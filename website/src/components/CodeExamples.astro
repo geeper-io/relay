@@ -1,0 +1,199 @@
+---
+const tabs = [
+  { id: "openai", label: "OpenAI SDK" },
+  { id: "anthropic", label: "Anthropic SDK" },
+  { id: "claude-code", label: "Claude Code CLI" },
+  { id: "curl", label: "curl" },
+];
+
+const examples: Record<string, { lang: string; code: string }> = {
+  openai: {
+    lang: "python",
+    code: `from openai import OpenAI
+
+# Point to your proxy — zero other changes needed
+client = OpenAI(
+    base_url="https://proxy.internal/v1",
+    api_key="your-team-api-key",
+)
+
+# Standard completion — works exactly like OpenAI
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Explain RAG in one paragraph"}],
+)
+print(response.choices[0].message.content)
+
+# Streaming also works
+stream = client.chat.completions.create(
+    model="claude-3-5-sonnet-20241022",  # route to Anthropic through proxy
+    messages=[{"role": "user", "content": "Write a haiku"}],
+    stream=True,
+)
+for chunk in stream:
+    print(chunk.choices[0].delta.content or "", end="")`,
+  },
+  anthropic: {
+    lang: "python",
+    code: `import anthropic
+
+# Use ANTHROPIC_BASE_URL env var or pass base_url directly
+client = anthropic.Anthropic(
+    base_url="https://proxy.internal",
+    api_key="your-team-api-key",
+)
+
+# Native Anthropic Messages API format
+message = client.messages.create(
+    model="claude-3-5-sonnet-20241022",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Hello, Claude"}],
+)
+print(message.content[0].text)
+
+# Streaming with context manager
+with client.messages.stream(
+    model="claude-3-5-sonnet-20241022",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Count to 5"}],
+) as stream:
+    for text in stream.text_stream:
+        print(text, end="", flush=True)`,
+  },
+  "claude-code": {
+    lang: "bash",
+    code: `# Option 1: Environment variables (recommended)
+export ANTHROPIC_BASE_URL="https://proxy.internal"
+export ANTHROPIC_API_KEY="your-team-api-key"
+claude
+
+# Option 2: Command-line flags
+claude --api-url https://proxy.internal \\
+       --api-key your-team-api-key
+
+# Option 3: Add to your shell profile
+echo 'export ANTHROPIC_BASE_URL="https://proxy.internal"' >> ~/.zshrc
+echo 'export ANTHROPIC_API_KEY="your-team-api-key"' >> ~/.zshrc
+
+# The proxy enforces your team's:
+#  • Rate limits (requests/min, tokens/day)
+#  • Content policy (block prompt injections)
+#  • PII scrubbing before leaving your network
+#  • Usage tracking for cost attribution`,
+  },
+  curl: {
+    lang: "bash",
+    code: `# OpenAI-compatible endpoint
+curl https://proxy.internal/v1/chat/completions \\
+  -H "Authorization: Bearer your-team-api-key" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-4o",
+    "messages": [{"role": "user", "content": "Hello"}]
+  }'
+
+# Anthropic Messages API endpoint
+curl https://proxy.internal/v1/messages \\
+  -H "x-api-key: your-team-api-key" \\
+  -H "anthropic-version: 2023-06-01" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "claude-3-5-sonnet-20241022",
+    "max_tokens": 1024,
+    "messages": [{"role": "user", "content": "Hello"}]
+  }'
+
+# List your API keys
+curl https://proxy.internal/internal/api-keys \\
+  -H "Authorization: Bearer your-team-api-key"`,
+  },
+};
+---
+
+<section id="examples" class="py-24">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="text-center mb-12">
+      <h2 class="text-4xl font-bold text-slate-50 mb-4">Works with your existing code</h2>
+      <p class="text-lg text-slate-400 max-w-2xl mx-auto">
+        Change one line — the base URL. Every SDK, tool, and framework that supports
+        OpenAI or Anthropic works with LLM Proxy.
+      </p>
+    </div>
+
+    <div class="max-w-4xl mx-auto">
+      <!-- Tab buttons -->
+      <div class="flex gap-1 p-1 bg-slate-900 rounded-xl border border-slate-800 mb-0 w-fit">
+        {
+          tabs.map((tab) => (
+            <button
+              class="tab-btn text-sm px-4 py-2 rounded-lg font-medium transition-all duration-150 text-slate-500 hover:text-slate-300"
+              data-tab={tab.id}
+            >
+              {tab.label}
+            </button>
+          ))
+        }
+      </div>
+
+      <!-- Code panels -->
+      <div class="rounded-b-2xl rounded-tr-2xl border border-slate-800 bg-slate-900 overflow-hidden">
+        <!-- Window chrome -->
+        <div class="flex items-center gap-2 px-4 py-3 bg-slate-800/60 border-b border-slate-700">
+          <div class="w-3 h-3 rounded-full bg-red-500/70"></div>
+          <div class="w-3 h-3 rounded-full bg-yellow-500/70"></div>
+          <div class="w-3 h-3 rounded-full bg-green-500/70"></div>
+        </div>
+
+        {
+          tabs.map((tab) => (
+            <div class="code-panel hidden" data-panel={tab.id}>
+              <pre class="p-5 overflow-x-auto font-mono text-sm leading-relaxed text-slate-300">
+                <code set:html={examples[tab.id].code
+                  .replace(/&/g, '&amp;')
+                  .replace(/</g, '&lt;')
+                  .replace(/>/g, '&gt;')
+                  // Python keywords
+                  .replace(/\b(from|import|as|def|return|with|for|in|print|True|False|None|if|else|elif|class|and|or|not|async|await|yield)\b/g, '<span style="color:#c084fc">$1</span>')
+                  // Bash keywords
+                  .replace(/\b(export|echo|curl)\b/g, '<span style="color:#c084fc">$1</span>')
+                  // Strings
+                  .replace(/"([^"\\]|\\.)*"/g, '<span style="color:#86efac">$&</span>')
+                  .replace(/'([^'\\]|\\.)*'/g, '<span style="color:#86efac">$&</span>')
+                  // Comments
+                  .replace(/(#[^\n]*)/g, '<span style="color:#475569">$1</span>')
+                } />
+              </pre>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  const tabBtns = /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll(".tab-btn"));
+  const panels = /** @type {NodeListOf<HTMLDivElement>} */ (document.querySelectorAll(".code-panel"));
+
+  function activateTab(id) {
+    tabBtns.forEach((btn) => {
+      if (btn.dataset.tab === id) {
+        btn.classList.add("bg-slate-800", "text-slate-100");
+        btn.classList.remove("text-slate-500");
+      } else {
+        btn.classList.remove("bg-slate-800", "text-slate-100");
+        btn.classList.add("text-slate-500");
+      }
+    });
+    panels.forEach((panel) => {
+      panel.classList.toggle("hidden", panel.dataset.panel !== id);
+    });
+  }
+
+  tabBtns.forEach((btn) => {
+    btn.addEventListener("click", () => activateTab(btn.dataset.tab));
+  });
+
+  // Activate first tab
+  activateTab("openai");
+</script>

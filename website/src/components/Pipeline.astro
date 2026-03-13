@@ -1,0 +1,156 @@
+---
+const steps = [
+  {
+    number: "01",
+    title: "Authentication",
+    description: "API key lookup, team resolution, user identification",
+    color: "violet",
+    icon: "key",
+  },
+  {
+    number: "02",
+    title: "Content Policy",
+    description: "Block injection attempts, jailbreaks, and blocked patterns",
+    color: "red",
+    icon: "shield",
+  },
+  {
+    number: "03",
+    title: "Token Count",
+    description: "Count prompt tokens, enforce per-model max limits",
+    color: "yellow",
+    icon: "hash",
+  },
+  {
+    number: "04",
+    title: "Rate Limiting",
+    description: "req/min, tokens/min, tokens/day — per user and per team",
+    color: "orange",
+    icon: "gauge",
+  },
+  {
+    number: "05",
+    title: "PII Scrubbing",
+    description: "Detect and redact PII entities with spaCy NER",
+    color: "blue",
+    icon: "eye-off",
+  },
+  {
+    number: "06",
+    title: "RAG Context",
+    description: "Semantic search in ChromaDB, inject relevant chunks",
+    color: "emerald",
+    icon: "database",
+  },
+  {
+    number: "07",
+    title: "Cache Lookup",
+    description: "Return cached response if semantic match found",
+    color: "indigo",
+    icon: "zap",
+  },
+  {
+    number: "08",
+    title: "LLM Call",
+    description: "Route to provider via LiteLLM with fallback models",
+    color: "pink",
+    icon: "cpu",
+  },
+  {
+    number: "09",
+    title: "Metrics & Usage",
+    description: "Record tokens, cost, latency; restore PII in response",
+    color: "teal",
+    icon: "bar-chart",
+  },
+];
+
+const colorMap: Record<string, { dot: string; line: string; bg: string; text: string }> = {
+  violet: { dot: "bg-violet-500", line: "border-violet-500/40", bg: "bg-violet-500/10", text: "text-violet-400" },
+  red: { dot: "bg-red-500", line: "border-red-500/40", bg: "bg-red-500/10", text: "text-red-400" },
+  yellow: { dot: "bg-yellow-500", line: "border-yellow-500/40", bg: "bg-yellow-500/10", text: "text-yellow-400" },
+  orange: { dot: "bg-orange-500", line: "border-orange-500/40", bg: "bg-orange-500/10", text: "text-orange-400" },
+  blue: { dot: "bg-blue-500", line: "border-blue-500/40", bg: "bg-blue-500/10", text: "text-blue-400" },
+  emerald: { dot: "bg-emerald-500", line: "border-emerald-500/40", bg: "bg-emerald-500/10", text: "text-emerald-400" },
+  indigo: { dot: "bg-indigo-500", line: "border-indigo-500/40", bg: "bg-indigo-500/10", text: "text-indigo-400" },
+  pink: { dot: "bg-pink-500", line: "border-pink-500/40", bg: "bg-pink-500/10", text: "text-pink-400" },
+  teal: { dot: "bg-teal-500", line: "border-teal-500/40", bg: "bg-teal-500/10", text: "text-teal-400" },
+};
+---
+
+<section id="pipeline" class="py-24 bg-slate-900/30">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="text-center mb-16">
+      <h2 class="text-4xl font-bold text-slate-50 mb-4">
+        Every request through 9 stages
+      </h2>
+      <p class="text-lg text-slate-400 max-w-2xl mx-auto">
+        A hardened pipeline that runs on every inference request — from
+        authentication to metered usage recording.
+      </p>
+    </div>
+
+    <!-- Pipeline visualization -->
+    <div class="relative">
+      <!-- Desktop: horizontal scroll on md, grid on lg -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-9 gap-px bg-slate-800 rounded-2xl overflow-hidden border border-slate-800">
+        {
+          steps.map((step, i) => {
+            const c = colorMap[step.color];
+            return (
+              <div class="relative bg-slate-900 p-4 hover:bg-slate-800/70 transition-colors group">
+                {/* Step number */}
+                <div class={`text-xs font-mono font-bold mb-3 ${c.text}`}>
+                  {step.number}
+                </div>
+
+                {/* Icon circle */}
+                <div class={`w-8 h-8 rounded-lg ${c.bg} flex items-center justify-center mb-3`}>
+                  <div class={`w-2 h-2 rounded-full ${c.dot}`} />
+                </div>
+
+                {/* Title */}
+                <div class="text-xs font-semibold text-slate-200 mb-1 leading-tight">
+                  {step.title}
+                </div>
+
+                {/* Description — shows on hover on desktop */}
+                <div class="text-[11px] text-slate-500 leading-relaxed hidden lg:block">
+                  {step.description}
+                </div>
+                <div class="text-[11px] text-slate-500 leading-relaxed lg:hidden">
+                  {step.description}
+                </div>
+
+                {/* Right arrow (except last) */}
+                {i < steps.length - 1 && (
+                  <div class="hidden lg:block absolute top-1/2 -right-2 -translate-y-1/2 z-10">
+                    <svg width="8" height="12" viewBox="0 0 8 12" fill="none">
+                      <path d="M1 1l6 5-6 5" stroke="#475569" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        }
+      </div>
+    </div>
+
+    <!-- Bottom note -->
+    <div class="mt-8 flex flex-wrap justify-center gap-6 text-sm text-slate-500">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-violet-500"></span>
+        Streaming supported (SSE)
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+        OpenAI & Anthropic format
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-yellow-500"></span>
+        Each stage independently configurable
+      </div>
+    </div>
+  </div>
+</section>
