@@ -1,4 +1,6 @@
 ---
+import { Code } from "astro:components";
+
 const tabs = [
   { id: "openai", label: "OpenAI SDK" },
   { id: "anthropic", label: "Anthropic SDK" },
@@ -6,7 +8,7 @@ const tabs = [
   { id: "curl", label: "curl" },
 ];
 
-const examples: Record<string, { lang: string; code: string }> = {
+const examples: Record<string, { lang: Parameters<typeof Code>[0]["lang"]; code: string }> = {
   openai: {
     lang: "python",
     code: `from openai import OpenAI
@@ -87,21 +89,14 @@ echo 'export ANTHROPIC_API_KEY="your-team-api-key"' >> ~/.zshrc
 curl https://proxy.internal/v1/chat/completions \\
   -H "Authorization: Bearer your-team-api-key" \\
   -H "Content-Type: application/json" \\
-  -d '{
-    "model": "gpt-4o",
-    "messages": [{"role": "user", "content": "Hello"}]
-  }'
+  -d '{"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}'
 
 # Anthropic Messages API endpoint
 curl https://proxy.internal/v1/messages \\
   -H "x-api-key: your-team-api-key" \\
   -H "anthropic-version: 2023-06-01" \\
   -H "Content-Type: application/json" \\
-  -d '{
-    "model": "claude-3-5-sonnet-20241022",
-    "max_tokens": 1024,
-    "messages": [{"role": "user", "content": "Hello"}]
-  }'
+  -d '{"model":"claude-3-5-sonnet-20241022","max_tokens":1024,"messages":[{"role":"user","content":"Hello"}]}'
 
 # List your API keys
 curl https://proxy.internal/internal/api-keys \\
@@ -136,7 +131,7 @@ curl https://proxy.internal/internal/api-keys \\
       </div>
 
       <!-- Code panels -->
-      <div class="rounded-b-2xl rounded-tr-2xl border border-slate-800 bg-slate-900 overflow-hidden">
+      <div class="rounded-b-2xl rounded-tr-2xl border border-slate-800 overflow-hidden">
         <!-- Window chrome -->
         <div class="flex items-center gap-2 px-4 py-3 bg-slate-800/60 border-b border-slate-700">
           <div class="w-3 h-3 rounded-full bg-red-500/70"></div>
@@ -147,22 +142,12 @@ curl https://proxy.internal/internal/api-keys \\
         {
           tabs.map((tab) => (
             <div class="code-panel hidden" data-panel={tab.id}>
-              <pre class="p-5 overflow-x-auto font-mono text-sm leading-relaxed text-slate-300">
-                <code set:html={examples[tab.id].code
-                  .replace(/&/g, '&amp;')
-                  .replace(/</g, '&lt;')
-                  .replace(/>/g, '&gt;')
-                  // Python keywords
-                  .replace(/\b(from|import|as|def|return|with|for|in|print|True|False|None|if|else|elif|class|and|or|not|async|await|yield)\b/g, '<span style="color:#c084fc">$1</span>')
-                  // Bash keywords
-                  .replace(/\b(export|echo|curl)\b/g, '<span style="color:#c084fc">$1</span>')
-                  // Strings
-                  .replace(/"([^"\\]|\\.)*"/g, '<span style="color:#86efac">$&</span>')
-                  .replace(/'([^'\\]|\\.)*'/g, '<span style="color:#86efac">$&</span>')
-                  // Comments
-                  .replace(/(#[^\n]*)/g, '<span style="color:#475569">$1</span>')
-                } />
-              </pre>
+              <Code
+                code={examples[tab.id].code}
+                lang={examples[tab.id].lang}
+                theme="css-variables"
+                class="text-sm leading-relaxed p-5 overflow-x-auto"
+              />
             </div>
           ))
         }
@@ -171,9 +156,31 @@ curl https://proxy.internal/internal/api-keys \\
   </div>
 </section>
 
+<style>
+  /* Map Shiki css-variables tokens to the terminal palette */
+  :root {
+    --astro-code-color-text:             #cbd5e1; /* slate-300  — plain text     */
+    --astro-code-color-background:       #0f172a; /* slate-900  — panel bg       */
+    --astro-code-token-constant:         #a78bfa; /* violet-400 — builtins       */
+    --astro-code-token-string:           #ce9178; /* rust       — string values  */
+    --astro-code-token-string-expression:#ce9178;
+    --astro-code-token-comment:          #475569; /* slate-600  — comments       */
+    --astro-code-token-keyword:          #a78bfa; /* violet-400 — keywords       */
+    --astro-code-token-parameter:        #cbd5e1;
+    --astro-code-token-function:         #e2e8f0; /* slate-200  — functions      */
+    --astro-code-token-punctuation:      #64748b; /* slate-500  — punctuation    */
+    --astro-code-token-link:             #a78bfa;
+  }
+  /* Shiki wraps output in a <pre> — remove its default bg so our panel shows */
+  .code-panel pre {
+    background: transparent !important;
+    margin: 0;
+  }
+</style>
+
 <script>
-  const tabBtns = /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll(".tab-btn"));
-  const panels = /** @type {NodeListOf<HTMLDivElement>} */ (document.querySelectorAll(".code-panel"));
+  const tabBtns = document.querySelectorAll(".tab-btn");
+  const panels = document.querySelectorAll(".code-panel");
 
   function activateTab(id) {
     tabBtns.forEach((btn) => {
@@ -194,6 +201,5 @@ curl https://proxy.internal/internal/api-keys \\
     btn.addEventListener("click", () => activateTab(btn.dataset.tab));
   });
 
-  // Activate first tab
   activateTab("openai");
 </script>

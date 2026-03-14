@@ -38,9 +38,9 @@
 
           <div class="mt-3 text-slate-500"># 3. Install (master key auto-generated)</div>
           <div class="text-slate-300">helm install llm-proxy ./helm/llm-proxy \</div>
-          <div class="text-slate-300 pl-4"><span class="text-yellow-400">--set</span> secrets.openaiApiKey=<span class="text-emerald-400">$OPENAI_KEY</span> \</div>
+          <div class="text-slate-300 pl-4"><span class="text-yellow-400">--set</span> secrets.openaiApiKey=<span style="color:#ce9178">$OPENAI_KEY</span> \</div>
           <div class="text-slate-300 pl-4"><span class="text-yellow-400">--set</span> ingress.enabled=true \</div>
-          <div class="text-slate-300 pl-4"><span class="text-yellow-400">--set</span> ingress.hosts[0].host=<span class="text-emerald-400">proxy.internal</span></div>
+          <div class="text-slate-300 pl-4"><span class="text-yellow-400">--set</span> ingress.hosts[0].host=<span style="color:#ce9178">proxy.internal</span></div>
 
           <div class="mt-3 text-emerald-400">✓ PostgreSQL, Redis, PVCs created automatically</div>
         </div>
