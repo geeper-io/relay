@@ -46,7 +46,7 @@ const features = [
     description:
       "Daily materialized views for cost, token consumption, and request volume. Team and user leaderboards. Langfuse integration.",
     badge: "Observability",
-    badgeColor: "blue-dark",
+    badgeColor: "teal-dark",
   },
   {
     icon: "users",
@@ -68,8 +68,8 @@ const features = [
 
 const badgeStyles: Record<string, string> = {
   red: "bg-red-500/10 text-red-400 border-red-500/20",
-  blue: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  "blue-dark": "bg-blue-600/10 text-blue-500 border-blue-600/20",
+  blue: "bg-teal-500/10 text-teal-400 border-teal-500/20",
+  "teal-dark": "bg-teal-600/10 text-teal-500 border-teal-600/20",
   yellow: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
   emerald: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
   pink: "bg-pink-500/10 text-pink-400 border-pink-500/20",
@@ -79,7 +79,7 @@ const badgeStyles: Record<string, string> = {
 
 <section id="features" class="py-24 relative">
   <div
-    class="absolute inset-0 bg-gradient-to-b from-transparent via-blue-950/5 to-transparent pointer-events-none"
+    class="absolute inset-0 bg-gradient-to-b from-transparent via-teal-950/5 to-transparent pointer-events-none"
   >
   </div>
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -100,12 +100,12 @@ const badgeStyles: Record<string, string> = {
             <div class="flex items-start justify-between mb-4">
               <div class="p-2.5 rounded-xl bg-slate-800 group-hover:bg-slate-750 transition-colors">
                 {feature.icon === "shield" && (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5eead4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                   </svg>
                 )}
                 {feature.icon === "eye-off" && (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5eead4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/>
                     <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/>
                     <line x1="1" y1="1" x2="23" y2="23"/>
@@ -125,7 +125,7 @@ const badgeStyles: Record<string, string> = {
                   </svg>
                 )}
                 {feature.icon === "zap" && (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5eead4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                     <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
                   </svg>
                 )}
