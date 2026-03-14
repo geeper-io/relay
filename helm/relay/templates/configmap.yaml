@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "llm-proxy.fullname" . }}-config
+  name: {{ include "relay.fullname" . }}-config
   labels:
-    {{- include "llm-proxy.labels" . | nindent 4 }}
+    {{- include "relay.labels" . | nindent 4 }}
 data:
   config.yaml: |
     server:
@@ -77,7 +77,7 @@ data:
       {{- end }}
       ttl: {{ .Values.config.cache.ttl }}
       {{- if .Values.redis.enabled }}
-      redis_host: {{ include "llm-proxy.redisHost" . | quote }}
+      redis_host: {{ include "relay.redisHost" . | quote }}
       redis_port: 6379
       {{- else }}
       redis_host: "localhost"

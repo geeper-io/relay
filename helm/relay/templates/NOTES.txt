@@ -1,4 +1,4 @@
-LLM Proxy has been deployed.
+Geeper Relay has been deployed.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   ACCESS
@@ -13,10 +13,10 @@ LLM Proxy has been deployed.
   {{- end }}
 {{- else if eq .Values.service.type "LoadBalancer" }}
   Run the following to get the external IP (may take a minute):
-    kubectl get svc --namespace {{ .Release.Namespace }} {{ include "llm-proxy.fullname" . }} -w
+    kubectl get svc --namespace {{ .Release.Namespace }} {{ include "relay.fullname" . }} -w
 {{- else }}
   Forward a local port to the service:
-    kubectl port-forward --namespace {{ .Release.Namespace }} svc/{{ include "llm-proxy.fullname" . }} 8000:{{ .Values.service.port }}
+    kubectl port-forward --namespace {{ .Release.Namespace }} svc/{{ include "relay.fullname" . }} 8000:{{ .Values.service.port }}
 
   Then access the proxy at http://localhost:8000
 {{- end }}

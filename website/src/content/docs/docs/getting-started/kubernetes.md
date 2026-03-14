@@ -21,17 +21,17 @@ helm repo update
 ## 2. Fetch chart dependencies
 
 ```bash
-helm dependency build ./helm/llm-proxy
+helm dependency build ./helm/relay
 ```
 
-This downloads the Bitnami PostgreSQL and Redis charts into `helm/llm-proxy/charts/`.
+This downloads the Bitnami PostgreSQL and Redis charts into `helm/relay/charts/`.
 
 ## 3. Install
 
 Minimal install with OpenAI key and an Ingress:
 
 ```bash
-helm install llm-proxy ./helm/llm-proxy \
+helm install relay ./helm/relay \
   --set secrets.openaiApiKey=$OPENAI_API_KEY \
   --set ingress.enabled=true \
   --set ingress.hosts[0].host=proxy.internal \
@@ -73,7 +73,7 @@ curl -X POST https://proxy.internal/internal/api-keys \
 ## Upgrading
 
 ```bash
-helm upgrade llm-proxy ./helm/llm-proxy \
+helm upgrade relay ./helm/relay \
   --set secrets.openaiApiKey=$OPENAI_API_KEY \
   --reuse-values
 ```
@@ -130,7 +130,7 @@ prometheus:
 ```
 
 ```bash
-helm upgrade --install llm-proxy ./helm/llm-proxy -f values-prod.yaml
+helm upgrade --install relay ./helm/relay -f values-prod.yaml
 ```
 
 See [Helm values reference](/docs/deployment/helm-reference) for the full list of options.

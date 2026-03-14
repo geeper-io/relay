@@ -1,14 +1,14 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "llm-proxy.fullname" . }}
+  name: {{ include "relay.fullname" . }}
   labels:
-    {{- include "llm-proxy.labels" . | nindent 4 }}
+    {{- include "relay.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "llm-proxy.selectorLabels" . | nindent 6 }}
+      {{- include "relay.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
@@ -20,13 +20,13 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "llm-proxy.selectorLabels" . | nindent 8 }}
+        {{- include "relay.selectorLabels" . | nindent 8 }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "llm-proxy.serviceAccountName" . }}
+      serviceAccountName: {{ include "relay.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
 
@@ -51,68 +51,68 @@ spec:
             - name: PROXY_MASTER_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "llm-proxy.masterKeySecretName" . }}
+                  name: {{ include "relay.masterKeySecretName" . }}
                   key: PROXY_MASTER_KEY
 
             # ── API keys (main secret) ───────────────────────────────────────
             - name: OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "llm-proxy.secretName" . }}
+                  name: {{ include "relay.secretName" . }}
                   key: OPENAI_API_KEY
                   optional: true
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "llm-proxy.secretName" . }}
+                  name: {{ include "relay.secretName" . }}
                   key: ANTHROPIC_API_KEY
                   optional: true
             - name: AZURE_OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "llm-proxy.secretName" . }}
+                  name: {{ include "relay.secretName" . }}
                   key: AZURE_OPENAI_API_KEY
                   optional: true
             - name: AZURE_OPENAI_ENDPOINT
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "llm-proxy.secretName" . }}
+                  name: {{ include "relay.secretName" . }}
                   key: AZURE_OPENAI_ENDPOINT
                   optional: true
             - name: GOOGLE_CLIENT_ID
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "llm-proxy.secretName" . }}
+                  name: {{ include "relay.secretName" . }}
                   key: GOOGLE_CLIENT_ID
                   optional: true
             - name: GOOGLE_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "llm-proxy.secretName" . }}
+                  name: {{ include "relay.secretName" . }}
                   key: GOOGLE_CLIENT_SECRET
                   optional: true
             - name: AUTH_BASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "llm-proxy.secretName" . }}
+                  name: {{ include "relay.secretName" . }}
                   key: AUTH_BASE_URL
                   optional: true
             - name: LANGFUSE_PUBLIC_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "llm-proxy.secretName" . }}
+                  name: {{ include "relay.secretName" . }}
                   key: LANGFUSE_PUBLIC_KEY
                   optional: true
             - name: LANGFUSE_SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "llm-proxy.secretName" . }}
+                  name: {{ include "relay.secretName" . }}
                   key: LANGFUSE_SECRET_KEY
                   optional: true
             - name: LANGFUSE_HOST
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "llm-proxy.secretName" . }}
+                  name: {{ include "relay.secretName" . }}
                   key: LANGFUSE_HOST
                   optional: true
 
@@ -122,7 +122,7 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "llm-proxy.secretName" . }}
+                  name: {{ include "relay.secretName" . }}
                   key: DATABASE_URL
             {{- else if .Values.postgresql.enabled }}
             # Bundled PostgreSQL: construct URL using the Bitnami-generated password
@@ -132,7 +132,7 @@ spec:
                   name: {{ printf "%s-postgresql" .Release.Name }}
                   key: password
             - name: DATABASE_URL
-              value: "postgresql+asyncpg://{{ .Values.postgresql.auth.username }}:$(POSTGRES_PASSWORD)@{{ include "llm-proxy.postgresHost" . }}:5432/{{ .Values.postgresql.auth.database }}"
+              value: "postgresql+asyncpg://{{ .Values.postgresql.auth.username }}:$(POSTGRES_PASSWORD)@{{ include "relay.postgresHost" . }}:5432/{{ .Values.postgresql.auth.database }}"
             {{- end }}
 
             # ── Redis URL (when redis subchart is enabled) ────────────────────
@@ -144,10 +144,10 @@ spec:
                   name: {{ printf "%s-redis" .Release.Name }}
                   key: redis-password
             - name: RATE_LIMITING__REDIS_URL
-              value: "redis://:$(REDIS_PASSWORD)@{{ include "llm-proxy.redisHost" . }}:6379"
+              value: "redis://:$(REDIS_PASSWORD)@{{ include "relay.redisHost" . }}:6379"
             {{- else }}
             - name: RATE_LIMITING__REDIS_URL
-              value: "redis://{{ include "llm-proxy.redisHost" . }}:6379"
+              value: "redis://{{ include "relay.redisHost" . }}:6379"
             {{- end }}
             {{- end }}
 
@@ -179,16 +179,16 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: {{ include "llm-proxy.fullname" . }}-config
+            name: {{ include "relay.fullname" . }}-config
         {{- if .Values.persistence.chroma.enabled }}
         - name: chroma
           persistentVolumeClaim:
-            claimName: {{ include "llm-proxy.chromaPvcName" . }}
+            claimName: {{ include "relay.chromaPvcName" . }}
         {{- end }}
         {{- if .Values.persistence.knowledgeBase.enabled }}
         - name: knowledge-base
           persistentVolumeClaim:
-            claimName: {{ include "llm-proxy.kbPvcName" . }}
+            claimName: {{ include "relay.kbPvcName" . }}
         {{- end }}
 
       {{- with .Values.nodeSelector }}

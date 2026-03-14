@@ -34,10 +34,10 @@
           <div class="text-slate-300 pl-4">https://charts.bitnami.com/bitnami</div>
 
           <div class="mt-3 text-slate-500"># 2. Fetch chart dependencies</div>
-          <div class="text-slate-300">helm dependency build ./helm/llm-proxy</div>
+          <div class="text-slate-300">helm dependency build ./helm/relay</div>
 
           <div class="mt-3 text-slate-500"># 3. Install (master key auto-generated)</div>
-          <div class="text-slate-300">helm install llm-proxy ./helm/llm-proxy \</div>
+          <div class="text-slate-300">helm install relay ./helm/relay \</div>
           <div class="text-slate-300 pl-4"><span class="text-yellow-400">--set</span> secrets.openaiApiKey=<span style="color:#ce9178">$OPENAI_KEY</span> \</div>
           <div class="text-slate-300 pl-4"><span class="text-yellow-400">--set</span> ingress.enabled=true \</div>
           <div class="text-slate-300 pl-4"><span class="text-yellow-400">--set</span> ingress.hosts[0].host=<span style="color:#ce9178">proxy.internal</span></div>

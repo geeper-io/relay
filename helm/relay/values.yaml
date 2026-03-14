@@ -1,4 +1,4 @@
-# Default values for llm-proxy.
+# Default values for relay.
 
 replicaCount: 1
 # NOTE: replicaCount > 1 requires ReadWriteMany storage for chroma and
@@ -7,7 +7,7 @@ replicaCount: 1
 # use replicaCount: 1 and rely on uvicorn --workers for concurrency.
 
 image:
-  repository: llm-proxy
+  repository: relay
   tag: "latest"
   pullPolicy: IfNotPresent
 
@@ -118,7 +118,7 @@ secrets:
   # Google OAuth portal — leave empty to disable /auth/login
   googleClientId: ""
   googleClientSecret: ""
-  authBaseUrl: ""                    # e.g. https://llm-proxy.internal
+  authBaseUrl: ""                    # e.g. https://relay.internal
 
   # Langfuse analytics
   langfusePublicKey: ""
@@ -159,14 +159,14 @@ ingress:
     # kubernetes.io/ingress.class: nginx
     # cert-manager.io/cluster-issuer: letsencrypt-prod
   hosts:
-    - host: llm-proxy.example.com
+    - host: relay.example.com
       paths:
         - path: /
           pathType: Prefix
   tls: []
-  # - secretName: llm-proxy-tls
+  # - secretName: relay-tls
   #   hosts:
-  #     - llm-proxy.example.com
+  #     - relay.example.com
 
 # ── Resources ─────────────────────────────────────────────────────────────────
 # spaCy en_core_web_lg loads ~800 MB; allow headroom for concurrent requests.

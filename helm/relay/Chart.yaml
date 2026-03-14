@@ -1,6 +1,6 @@
 apiVersion: v2
-name: llm-proxy
-description: In-house AI gateway with PII scrubbing, RAG, usage tracking, and Prometheus metrics
+name: relay
+description: Geeper Relay — enterprise AI gateway with PII scrubbing, RAG, usage tracking, and Prometheus metrics
 type: application
 version: 0.1.0
 appVersion: "1.0.0"
