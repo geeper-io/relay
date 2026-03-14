@@ -1,5 +1,5 @@
 {
-  "name": "llm-proxy-website",
+  "name": "relay-website",
   "type": "module",
   "version": "1.0.0",
   "scripts": {

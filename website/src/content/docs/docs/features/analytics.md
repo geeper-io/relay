@@ -94,17 +94,17 @@ Recommended alerts:
 ```yaml
 # Alert: high rate limit hit rate
 - alert: HighRateLimitHits
-  expr: rate(llm_proxy_rate_limit_hits_total[5m]) > 1
+  expr: rate(relay_rate_limit_hits_total[5m]) > 1
   for: 5m
 
 # Alert: p95 latency over 5s
 - alert: HighLatency
-  expr: histogram_quantile(0.95, llm_proxy_request_duration_seconds_bucket) > 5
+  expr: histogram_quantile(0.95, relay_request_duration_seconds_bucket) > 5
   for: 10m
 
 # Alert: upstream errors
 - alert: UpstreamErrors
-  expr: rate(llm_proxy_requests_total{status="502"}[5m]) > 0.1
+  expr: rate(relay_requests_total{status="502"}[5m]) > 0.1
   for: 2m
 ```
 
@@ -112,10 +112,10 @@ Recommended alerts:
 
 A suggested panel layout:
 
-1. **Request rate** — `rate(llm_proxy_requests_total[5m])` by model
+1. **Request rate** — `rate(relay_requests_total[5m])` by model
 2. **Latency p50/p95/p99** — histogram quantiles
-3. **Token throughput** — `rate(llm_proxy_tokens_total[5m])` split prompt/completion
-4. **Rate limit hits** — `rate(llm_proxy_rate_limit_hits_total[5m])` by limit type
-5. **Cache hit rate** — `rate(llm_proxy_cache_hits_total[5m]) / rate(llm_proxy_requests_total[5m])`
-6. **PII entities scrubbed** — `rate(llm_proxy_pii_entities_total[5m])` by entity type
+3. **Token throughput** — `rate(relay_tokens_total[5m])` split prompt/completion
+4. **Rate limit hits** — `rate(relay_rate_limit_hits_total[5m])` by limit type
+5. **Cache hit rate** — `rate(relay_cache_hits_total[5m]) / rate(relay_requests_total[5m])`
+6. **PII entities scrubbed** — `rate(relay_pii_entities_total[5m])` by entity type
 7. **Daily cost** (from PostgreSQL or Langfuse via data source plugin)

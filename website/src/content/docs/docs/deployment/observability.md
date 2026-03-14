@@ -33,13 +33,13 @@ prometheus:
 
 | Metric | Type | Labels |
 |---|---|---|
-| `llm_proxy_requests_total` | Counter | `model`, `status` |
-| `llm_proxy_request_duration_seconds` | Histogram | `model` |
-| `llm_proxy_tokens_total` | Counter | `model`, `type` (prompt/completion) |
-| `llm_proxy_rate_limit_hits_total` | Counter | `limit_type` |
-| `llm_proxy_cache_hits_total` | Counter | — |
-| `llm_proxy_pii_entities_total` | Counter | `entity_type` |
-| `llm_proxy_content_policy_blocks_total` | Counter | — |
+| `relay_requests_total` | Counter | `model`, `status` |
+| `relay_request_duration_seconds` | Histogram | `model` |
+| `relay_tokens_total` | Counter | `model`, `type` (prompt/completion) |
+| `relay_rate_limit_hits_total` | Counter | `limit_type` |
+| `relay_cache_hits_total` | Counter | — |
+| `relay_pii_entities_total` | Counter | `entity_type` |
+| `relay_content_policy_blocks_total` | Counter | — |
 
 ## Grafana
 
@@ -47,37 +47,37 @@ prometheus:
 
 1. **Request rate** (requests/sec by model)
    ```yaml
-   sum by (model) (rate(llm_proxy_requests_total[5m]))
+   sum by (model) (rate(relay_requests_total[5m]))
    ```
 
 2. **Error rate**
    ```yaml
-   sum by (status) (rate(llm_proxy_requests_total{status!="200"}[5m]))
+   sum by (status) (rate(relay_requests_total{status!="200"}[5m]))
    ```
 
 3. **Latency p50 / p95 / p99**
    ```yaml
-   histogram_quantile(0.95, sum by (le) (rate(llm_proxy_request_duration_seconds_bucket[5m])))
+   histogram_quantile(0.95, sum by (le) (rate(relay_request_duration_seconds_bucket[5m])))
    ```
 
 4. **Token throughput**
    ```yaml
-   sum by (type) (rate(llm_proxy_tokens_total[5m]))
+   sum by (type) (rate(relay_tokens_total[5m]))
    ```
 
 5. **Rate limit hit rate**
    ```yaml
-   sum by (limit_type) (rate(llm_proxy_rate_limit_hits_total[5m]))
+   sum by (limit_type) (rate(relay_rate_limit_hits_total[5m]))
    ```
 
 6. **Cache hit ratio**
    ```yaml
-   rate(llm_proxy_cache_hits_total[5m]) / rate(llm_proxy_requests_total[5m])
+   rate(relay_cache_hits_total[5m]) / rate(relay_requests_total[5m])
    ```
 
 7. **PII entities scrubbed**
    ```yaml
-   sum by (entity_type) (rate(llm_proxy_pii_entities_total[5m]))
+   sum by (entity_type) (rate(relay_pii_entities_total[5m]))
    ```
 
 ### Recommended alerts
@@ -87,19 +87,19 @@ groups:
   - name: llm-proxy
     rules:
       - alert: HighErrorRate
-        expr: rate(llm_proxy_requests_total{status=~"5.."}[5m]) > 0.05
+        expr: rate(relay_requests_total{status=~"5.."}[5m]) > 0.05
         for: 5m
         annotations:
           summary: "High upstream error rate"
 
       - alert: HighLatency
-        expr: histogram_quantile(0.95, sum by (le) (rate(llm_proxy_request_duration_seconds_bucket[5m]))) > 10
+        expr: histogram_quantile(0.95, sum by (le) (rate(relay_request_duration_seconds_bucket[5m]))) > 10
         for: 10m
         annotations:
           summary: "p95 latency over 10s"
 
       - alert: RateLimitSpike
-        expr: sum(rate(llm_proxy_rate_limit_hits_total[5m])) > 5
+        expr: sum(rate(relay_rate_limit_hits_total[5m])) > 5
         for: 5m
         annotations:
           summary: "Elevated rate limiting — check user quotas"

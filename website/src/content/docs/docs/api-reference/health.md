@@ -37,13 +37,13 @@ Key metrics exposed:
 
 | Metric | Type | Labels | Description |
 |---|---|---|---|
-| `llm_proxy_requests_total` | Counter | `model`, `status` | Total inference requests |
-| `llm_proxy_request_duration_seconds` | Histogram | `model` | End-to-end request latency |
-| `llm_proxy_tokens_total` | Counter | `model`, `type` | Tokens consumed (`prompt`/`completion`) |
-| `llm_proxy_rate_limit_hits_total` | Counter | `limit_type` | Rate limit rejections |
-| `llm_proxy_cache_hits_total` | Counter | — | Cache hits |
-| `llm_proxy_pii_entities_total` | Counter | `entity_type` | PII entities scrubbed |
-| `llm_proxy_content_policy_blocks_total` | Counter | — | Content policy rejections |
+| `relay_requests_total` | Counter | `model`, `status` | Total inference requests |
+| `relay_request_duration_seconds` | Histogram | `model` | End-to-end request latency |
+| `relay_tokens_total` | Counter | `model`, `type` | Tokens consumed (`prompt`/`completion`) |
+| `relay_rate_limit_hits_total` | Counter | `limit_type` | Rate limit rejections |
+| `relay_cache_hits_total` | Counter | — | Cache hits |
+| `relay_pii_entities_total` | Counter | `entity_type` | PII entities scrubbed |
+| `relay_content_policy_blocks_total` | Counter | — | Content policy rejections |
 
 ### Kubernetes ServiceMonitor
 

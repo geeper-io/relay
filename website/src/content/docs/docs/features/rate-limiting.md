@@ -102,7 +102,7 @@ Content-Type: application/json
 ## Prometheus metrics
 
 ```
-llm_proxy_rate_limit_hits_total{limit_type="requests_per_minute"} 3
-llm_proxy_rate_limit_hits_total{limit_type="tokens_per_minute"} 12
-llm_proxy_rate_limit_hits_total{limit_type="tokens_per_day"} 1
+relay_rate_limit_hits_total{limit_type="requests_per_minute"} 3
+relay_rate_limit_hits_total{limit_type="tokens_per_minute"} 12
+relay_rate_limit_hits_total{limit_type="tokens_per_day"} 1
 ```

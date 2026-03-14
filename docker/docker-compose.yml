@@ -9,7 +9,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - PROXY_MASTER_KEY=${PROXY_MASTER_KEY:-change-me-in-production}
-      - DATABASE_URL=postgresql+asyncpg://proxy:proxy@postgres:5432/llm_proxy
+      - DATABASE_URL=postgresql+asyncpg://proxy:proxy@postgres:5432/relay
       # Langfuse analytics — remove or leave blank to disable
 #      - ANALYTICS__ENABLED=${ANALYTICS__ENABLED:-false}
 #      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
@@ -31,11 +31,11 @@ services:
     environment:
       POSTGRES_USER: proxy
       POSTGRES_PASSWORD: proxy
-      POSTGRES_DB: llm_proxy
+      POSTGRES_DB: relay
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U proxy -d llm_proxy"]
+      test: ["CMD-SHELL", "pg_isready -U proxy -d relay"]
       interval: 5s
       timeout: 3s
       retries: 5

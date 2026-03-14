@@ -35,6 +35,16 @@ def test_email_scrubbed(scrubber, restorer):
     restored = restorer.restore(scrubbed[0]["content"], rmap)
     assert "john@example.com" in restored
 
+def test_name_scrubbed(scrubber, restorer):
+    messages = [{"role": "user", "content": "Contact John Doe for details."}]
+    scrubbed, rmap, count = scrubber.scrub_messages(messages)
+    assert count > 0
+    assert "John Doe" not in scrubbed[0]["content"]
+    assert "PII_PERSON" in scrubbed[0]["content"]
+    # Restore
+    restored = restorer.restore(scrubbed[0]["content"], rmap)
+    assert "John Doe" in restored
+
 
 def test_no_pii_unchanged(scrubber):
     messages = [{"role": "user", "content": "What is the capital of France?"}]
