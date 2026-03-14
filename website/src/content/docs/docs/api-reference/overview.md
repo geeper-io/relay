@@ -1,9 +1,9 @@
 ---
 title: API overview & authentication
-description: Authentication model, request headers, and error shapes for all LLM Proxy endpoints.
+description: Authentication model, request headers, and error shapes for all Geeper Relay endpoints.
 ---
 
-LLM Proxy exposes three groups of endpoints:
+Geeper Relay exposes three groups of endpoints:
 
 | Group | Path prefix | Auth |
 |---|---|---|

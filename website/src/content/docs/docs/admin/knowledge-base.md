@@ -72,7 +72,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: ingest
-          image: ghcr.io/your-org/llm-proxy:latest
+          image: ghcr.io/geeper-io/relay:latest
           command: ["python", "scripts/ingest_kb.py", "--directory", "/app/knowledge_base"]
           env:
             - name: PROXY_MASTER_KEY

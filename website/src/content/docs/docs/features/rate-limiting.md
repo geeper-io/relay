@@ -5,7 +5,7 @@ description: Token-bucket rate limiting per user and per team with memory and Re
 
 ## How it works
 
-LLM Proxy uses a **token-bucket** algorithm. Each user has three independent buckets:
+Geeper Relay uses a **token-bucket** algorithm. Each user has three independent buckets:
 
 | Bucket | Config key | Default |
 |---|---|---|

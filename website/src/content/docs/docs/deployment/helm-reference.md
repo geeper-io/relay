@@ -1,6 +1,6 @@
 ---
 title: Helm values reference
-description: Complete annotated reference for all llm-proxy Helm chart values.
+description: Complete annotated reference for all Geeper Relay Helm chart values.
 ---
 
 All values with their defaults. Override via `--set key=value` or a `-f values.yaml` file.

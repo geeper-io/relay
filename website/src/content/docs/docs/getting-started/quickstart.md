@@ -1,6 +1,6 @@
 ---
 title: Quickstart (Docker Compose)
-description: Run LLM Proxy locally in under 5 minutes using Docker Compose.
+description: Run Geeper Relay locally in under 5 minutes using Docker Compose.
 ---
 
 ## Prerequisites
@@ -11,8 +11,8 @@ description: Run LLM Proxy locally in under 5 minutes using Docker Compose.
 ## 1. Clone and configure
 
 ```bash
-git clone https://github.com/your-org/llm-proxy
-cd llm-proxy
+git clone https://github.com/geeper-io/relay
+cd relay
 cp .env.example .env
 ```
 
@@ -38,7 +38,7 @@ docker compose up -d
 ```
 
 This starts:
-- `proxy` — the LLM Proxy on port 8000
+- `proxy` — the Geeper Relay on port 8000
 - `postgres` — PostgreSQL 16 for API keys, users, usage records
 - `chromadb` — vector store for RAG (optional, controlled by `config.yaml`)
 
@@ -86,7 +86,7 @@ curl http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gpt-4o",
-    "messages": [{"role": "user", "content": "Hello from LLM Proxy!"}]
+    "messages": [{"role": "user", "content": "Hello from Geeper Relay!"}]
   }'
 ```
 

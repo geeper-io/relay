@@ -5,7 +5,7 @@ import tailwind from "@astrojs/tailwind";
 export default defineConfig({
   integrations: [
     starlight({
-      title: "LLM Proxy",
+      title: "Relay",
       description: "Enterprise AI gateway — OpenAI & Anthropic compatible.",
       customCss: ["./src/styles/docs.css"],
       sidebar: [

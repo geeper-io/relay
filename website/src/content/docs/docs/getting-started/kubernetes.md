@@ -1,6 +1,6 @@
 ---
 title: Kubernetes (Helm)
-description: Deploy LLM Proxy to Kubernetes with the production Helm chart.
+description: Deploy Geeper Relay to Kubernetes with the production Helm chart.
 ---
 
 ## Prerequisites
@@ -98,7 +98,7 @@ helm upgrade llm-proxy ./helm/llm-proxy \
 replicaCount: 2
 
 image:
-  repository: ghcr.io/your-org/llm-proxy
+  repository: ghcr.io/geeper-io/relay
   tag: "1.2.0"
 
 secrets:
