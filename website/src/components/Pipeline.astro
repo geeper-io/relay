@@ -4,7 +4,7 @@ const steps = [
     number: "01",
     title: "Authentication",
     description: "API key lookup, team resolution, user identification",
-    color: "violet",
+    color: "blue",
     icon: "key",
   },
   {
@@ -46,7 +46,7 @@ const steps = [
     number: "07",
     title: "Cache Lookup",
     description: "Return cached response if semantic match found",
-    color: "indigo",
+    color: "blue-dark",
     icon: "zap",
   },
   {
@@ -66,13 +66,12 @@ const steps = [
 ];
 
 const colorMap: Record<string, { dot: string; line: string; bg: string; text: string }> = {
-  violet: { dot: "bg-violet-500", line: "border-violet-500/40", bg: "bg-violet-500/10", text: "text-violet-400" },
+  blue: { dot: "bg-blue-500", line: "border-blue-500/40", bg: "bg-blue-500/10", text: "text-blue-400" },
+  "blue-dark": { dot: "bg-blue-600", line: "border-blue-600/40", bg: "bg-blue-600/10", text: "text-blue-500" },
   red: { dot: "bg-red-500", line: "border-red-500/40", bg: "bg-red-500/10", text: "text-red-400" },
   yellow: { dot: "bg-yellow-500", line: "border-yellow-500/40", bg: "bg-yellow-500/10", text: "text-yellow-400" },
   orange: { dot: "bg-orange-500", line: "border-orange-500/40", bg: "bg-orange-500/10", text: "text-orange-400" },
-  blue: { dot: "bg-blue-500", line: "border-blue-500/40", bg: "bg-blue-500/10", text: "text-blue-400" },
   emerald: { dot: "bg-emerald-500", line: "border-emerald-500/40", bg: "bg-emerald-500/10", text: "text-emerald-400" },
-  indigo: { dot: "bg-indigo-500", line: "border-indigo-500/40", bg: "bg-indigo-500/10", text: "text-indigo-400" },
   pink: { dot: "bg-pink-500", line: "border-pink-500/40", bg: "bg-pink-500/10", text: "text-pink-400" },
   teal: { dot: "bg-teal-500", line: "border-teal-500/40", bg: "bg-teal-500/10", text: "text-teal-400" },
 };
@@ -140,7 +139,7 @@ const colorMap: Record<string, { dot: string; line: string; bg: string; text: st
     <!-- Bottom note -->
     <div class="mt-8 flex flex-wrap justify-center gap-6 text-sm text-slate-500">
       <div class="flex items-center gap-2">
-        <span class="w-2 h-2 rounded-full bg-violet-500"></span>
+        <span class="w-2 h-2 rounded-full bg-blue-500"></span>
         Streaming supported (SSE)
       </div>
       <div class="flex items-center gap-2">
