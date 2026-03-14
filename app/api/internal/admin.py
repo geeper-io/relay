@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import require_admin
 from app.db.engine import get_db
-from app.db.repositories.usage import get_usage_summary
+from app.db.repositories.usage import get_leaderboard, get_usage_summary
 from app.db.repositories.users import create_api_key, create_team, create_user
 
 router = APIRouter(tags=["admin"], dependencies=[Depends(require_admin)])
@@ -19,9 +20,60 @@ async def usage_report(
     user_id: str | None = None,
     team_id: str | None = None,
     since: datetime | None = None,
+    until: datetime | None = None,
+    granularity: Literal["day", "week", "month", "year"] | None = None,
+    group_by: Literal["model", "user", "team"] = "model",
+    limit: int = 500,
     db: AsyncSession = Depends(get_db),
 ):
-    return await get_usage_summary(db, user_id=user_id, team_id=team_id, since=since)
+    """Aggregate usage records.
+
+    **Without** `granularity` — totals per `group_by` value over the window.
+
+    **With** `granularity` — one row per `(period, group_by)` pair, ordered by
+    period ascending. Useful for time-series charts.
+
+    Examples:
+    - Daily token burn by model:  `?granularity=day&group_by=model`
+    - Monthly cost per team:      `?granularity=month&group_by=team`
+    - This week per user:         `?granularity=day&group_by=user&since=...`
+    """
+    return await get_usage_summary(
+        db,
+        user_id=user_id,
+        team_id=team_id,
+        since=since,
+        until=until,
+        granularity=granularity,
+        group_by=group_by,
+        limit=limit,
+    )
+
+
+@router.get("/usage/leaderboard")
+async def usage_leaderboard(
+    dimension: Literal["user", "team", "model"] = "user",
+    metric: Literal["cost_usd", "total_tokens", "requests"] = "cost_usd",
+    since: datetime | None = None,
+    until: datetime | None = None,
+    limit: int = 10,
+    db: AsyncSession = Depends(get_db),
+):
+    """Top-N entities ranked by a metric over a time window.
+
+    Examples:
+    - Top 10 users by cost this month:    `?dimension=user&metric=cost_usd&since=2026-03-01`
+    - Top 5 teams by token usage:         `?dimension=team&metric=total_tokens&limit=5`
+    - Most-used models this week:         `?dimension=model&metric=requests&since=2026-03-10`
+    """
+    return await get_leaderboard(
+        db,
+        dimension=dimension,
+        metric=metric,
+        since=since,
+        until=until,
+        limit=limit,
+    )
 
 
 @router.post("/teams")

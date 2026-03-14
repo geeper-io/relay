@@ -111,6 +111,8 @@ class UsageRecord(Base):
         Index("ix_usage_team_created", "team_id", "created_at"),
         Index("ix_usage_model_created", "model", "created_at"),
         Index("ix_usage_request_id", "request_id"),
+        # date-range-first scans (leaderboards, time-series aggregations)
+        Index("ix_usage_created_at", "created_at"),
     )
 
 
