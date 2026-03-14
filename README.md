@@ -1,4 +1,4 @@
-# LLM Proxy
+# Relay
 
 An in-house AI gateway for teams that need controlled, observable access to LLMs (OpenAI, Claude, Azure, and others). Drop-in OpenAI API compatible — existing tools work without modification.
 
@@ -30,8 +30,8 @@ An in-house AI gateway for teams that need controlled, observable access to LLMs
 ### 1. Install
 
 ```bash
-git clone <repo>
-cd llm-proxy
+git clone https://github.com/geeper-io/relay.git
+cd relay
 
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
@@ -143,11 +143,11 @@ helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo update
 
 # Fetch subchart dependencies
-helm dependency build helm/llm-proxy
+helm dependency build helm/relay
 
 # Install (dry-run first to review)
-helm upgrade --install llm-proxy helm/llm-proxy \
-  --namespace llm-proxy --create-namespace \
+helm upgrade --install relay helm/relay \
+  --namespace relay --create-namespace \
   --set secrets.openaiApiKey=sk-... \
   --set secrets.anthropicApiKey=sk-ant-... \
   --set postgresql.auth.password=your-db-password
@@ -163,12 +163,12 @@ Rather than `--set` flags, use a `values-prod.yaml` for production:
 replicaCount: 1   # see note below about scaling
 
 image:
-  repository: your-registry.example.com/llm-proxy
+  repository: your-registry.example.com/relay
   tag: "1.2.3"
 
 secrets:
   create: false
-  existingSecret: llm-proxy-secrets   # pre-created via Vault, Sealed Secrets, etc.
+  existingSecret: relay-secrets   # pre-created via Vault, Sealed Secrets, etc.
 
 ingress:
   enabled: true
@@ -176,14 +176,14 @@ ingress:
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
   hosts:
-    - host: llm-proxy.internal.example.com
+    - host: relay.internal.example.com
       paths:
         - path: /
           pathType: Prefix
   tls:
-    - secretName: llm-proxy-tls
+    - secretName: relay-tls
       hosts:
-        - llm-proxy.internal.example.com
+        - relay.internal.example.com
 
 resources:
   requests:
@@ -195,7 +195,7 @@ resources:
 
 postgresql:
   auth:
-    existingSecret: llm-proxy-postgresql-secret
+    existingSecret: relay-postgresql-secret
   primary:
     persistence:
       size: 50Gi
@@ -211,8 +211,8 @@ prometheus:
 ```
 
 ```bash
-helm upgrade --install llm-proxy helm/llm-proxy \
-  --namespace llm-proxy --create-namespace \
+helm upgrade --install relay helm/relay \
+  --namespace relay --create-namespace \
   -f values-prod.yaml
 ```
 
@@ -239,7 +239,7 @@ secrets:
 To retrieve the auto-generated key:
 
 ```bash
-kubectl get secret --namespace llm-proxy my-release-llm-proxy-master-key \
+kubectl get secret --namespace relay my-release-relay-master-key \
   -o jsonpath="{.data.PROXY_MASTER_KEY}" | base64 -d
 ```
 
@@ -248,7 +248,7 @@ kubectl get secret --namespace llm-proxy my-release-llm-proxy-master-key \
 ```yaml
 secrets:
   create: false
-  existingSecret: llm-proxy-api-keys
+  existingSecret: relay-api-keys
 ```
 
 The external Secret must contain: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DATABASE_URL` (if not using the bundled PostgreSQL), plus any optional keys (`GOOGLE_CLIENT_ID`, `LANGFUSE_PUBLIC_KEY`, etc.).
@@ -264,7 +264,7 @@ cp .env.example .env  # fill in keys
 docker compose -f docker/docker-compose.yml up -d
 
 # Build the image alone (optional)
-docker build -t llm-proxy .
+docker build -t relay .
 
 # Run standalone (SQLite, no Postgres required)
 docker run --rm -p 8000:8000 \
@@ -272,7 +272,7 @@ docker run --rm -p 8000:8000 \
   -e PROXY_MASTER_KEY=secret \
   -v $(pwd)/chroma_data:/app/chroma_data \
   -v $(pwd)/knowledge_base:/app/knowledge_base \
-  llm-proxy
+  relay
 ```
 
 Services started by compose: `proxy` (port 8000), `postgres`, `prometheus` (port 9090).
@@ -607,18 +607,18 @@ Metrics are available at `http://localhost:8000/metrics`.
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `llm_proxy_requests_total` | Counter | Total requests, labelled `model`, `status` |
-| `llm_proxy_request_latency_seconds` | Histogram | End-to-end latency, labelled `model`, `stream` |
-| `llm_proxy_tokens_total` | Counter | Tokens consumed, labelled `model`, `token_type` (`prompt`/`completion`) |
-| `llm_proxy_cost_usd_total` | Counter | Cumulative USD cost, labelled `model` |
-| `llm_proxy_cache_hits_total` | Counter | Cache hits, labelled `model` |
-| `llm_proxy_pii_entities_scrubbed_total` | Counter | PII entities removed |
-| `llm_proxy_pii_requests_affected_total` | Counter | Requests that contained PII |
-| `llm_proxy_rag_retrievals_total` | Counter | RAG lookups, labelled `status` (`hit`/`miss`) |
-| `llm_proxy_rag_chunks_retrieved` | Histogram | Chunks retrieved per request |
-| `llm_proxy_rate_limit_hits_total` | Counter | Rate limit rejections, labelled `limit_type` |
-| `llm_proxy_content_policy_blocks_total` | Counter | Content policy rejections |
-| `llm_proxy_active_requests` | Gauge | Requests currently in flight |
+| `relay_requests_total` | Counter | Total requests, labelled `model`, `status` |
+| `relay_request_latency_seconds` | Histogram | End-to-end latency, labelled `model`, `stream` |
+| `relay_tokens_total` | Counter | Tokens consumed, labelled `model`, `token_type` (`prompt`/`completion`) |
+| `relay_cost_usd_total` | Counter | Cumulative USD cost, labelled `model` |
+| `relay_cache_hits_total` | Counter | Cache hits, labelled `model` |
+| `relay_pii_entities_scrubbed_total` | Counter | PII entities removed |
+| `relay_pii_requests_affected_total` | Counter | Requests that contained PII |
+| `relay_rag_retrievals_total` | Counter | RAG lookups, labelled `status` (`hit`/`miss`) |
+| `relay_rag_chunks_retrieved` | Histogram | Chunks retrieved per request |
+| `relay_rate_limit_hits_total` | Counter | Rate limit rejections, labelled `limit_type` |
+| `relay_content_policy_blocks_total` | Counter | Content policy rejections |
+| `relay_active_requests` | Gauge | Requests currently in flight |
 
 Prometheus scrapes `proxy:8000/metrics` every 15 seconds (configured in `docker/prometheus.yml`).
 
