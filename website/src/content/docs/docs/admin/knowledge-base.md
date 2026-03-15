@@ -3,40 +3,13 @@ title: Knowledge base
 description: Ingest documents into ChromaDB for automatic RAG context injection.
 ---
 
-The knowledge base is a ChromaDB collection that the proxy queries on every request (when RAG is enabled). You populate it by ingesting documents via the admin API.
+The knowledge base is a ChromaDB collection that the proxy queries on every request (when RAG is enabled). You populate it by uploading documents via the admin API.
 
 ## Supported file types
 
 `.txt`, `.md`, `.rst`
 
-## Ingest a directory
-
-Recursively scans a directory and ingests all supported files:
-
-```bash
-curl -X POST http://localhost:8000/internal/kb/ingest-directory \
-  -H "Authorization: Bearer $PROXY_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"directory": "knowledge_base"}'
-```
-
-The `directory` path is relative to the proxy container's working directory (`/app` in Docker). Mount your documents at `/app/knowledge_base` or update the path.
-
-Response:
-
-```json
-{
-  "ingested_files": 8,
-  "total_chunks": 212,
-  "files": [
-    "knowledge_base/api.md",
-    "knowledge_base/guide.md",
-    "knowledge_base/faq.md"
-  ]
-}
-```
-
-## Upload a single file
+## Upload a file
 
 ```bash
 curl -X POST http://localhost:8000/internal/kb/upload \
@@ -44,24 +17,61 @@ curl -X POST http://localhost:8000/internal/kb/upload \
   -F "file=@./runbook.md"
 ```
 
-## CLI script
+Response:
 
-For local development or CI:
+```json
+{
+  "filename": "runbook.md",
+  "chunks_ingested": 24
+}
+```
+
+## Bulk ingest
+
+Upload files one at a time from a local directory using a shell loop:
 
 ```bash
-python scripts/ingest_kb.py --directory ./docs
+for f in ./docs/*.md; do
+  curl -s -X POST http://relay.company.com/internal/kb/upload \
+    -H "Authorization: Bearer $PROXY_MASTER_KEY" \
+    -F "file=@$f" | jq .
+done
+```
+
+## Stats
+
+```bash
+curl http://localhost:8000/internal/kb/stats \
+  -H "Authorization: Bearer $PROXY_MASTER_KEY"
+```
+
+```json
+{ "total_documents": 348 }
+```
+
+## Reset
+
+Deletes all documents from the collection:
+
+```bash
+curl -X DELETE http://localhost:8000/internal/kb/reset \
+  -H "Authorization: Bearer $PROXY_MASTER_KEY"
 ```
 
 ## Chunking
 
-Documents are split into overlapping chunks before embedding. Default chunk size and overlap are configured in the source. Chunks that are too short (< 50 characters) are skipped.
+Documents are split into overlapping ~512-token chunks before embedding. Chunks shorter than a few words are skipped automatically.
+
+## Re-ingestion
+
+Uploading the same file again adds duplicate chunks. Reset the collection first, then re-upload all files to do a clean re-ingest.
 
 ## Kubernetes
 
-Mount the knowledge base files as a PVC and run ingestion as a Job:
+Use a `curl` init container or a Job to seed the knowledge base after deploy:
 
 ```yaml
-# knowledge-base-ingest-job.yaml
+# kb-ingest-job.yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -72,32 +82,27 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: ingest
-          image: ghcr.io/geeper-io/relay:latest
-          command: ["python", "scripts/ingest_kb.py", "--directory", "/app/knowledge_base"]
+          image: curlimages/curl:latest
+          command:
+            - sh
+            - -c
+            - |
+              for f in /docs/*.md; do
+                curl -sf -X POST http://relay:8000/internal/kb/upload \
+                  -H "Authorization: Bearer $PROXY_MASTER_KEY" \
+                  -F "file=@$f"
+              done
           env:
             - name: PROXY_MASTER_KEY
               valueFrom:
                 secretKeyRef:
-                  name: llm-proxy-master-key
+                  name: relay-master-key
                   key: PROXY_MASTER_KEY
           volumeMounts:
-            - name: knowledge-base
-              mountPath: /app/knowledge_base
+            - name: docs
+              mountPath: /docs
       volumes:
-        - name: knowledge-base
-          persistentVolumeClaim:
-            claimName: llm-proxy-knowledge-base
+        - name: docs
+          configMap:
+            name: relay-docs   # or a PVC / S3 init container
 ```
-
-:::tip
-Run the Job after deploying a new version of your docs. The ChromaDB PVC persists across pod restarts — you only need to re-ingest when content changes.
-:::
-
-## Re-ingestion
-
-Re-ingesting a file that already exists in the collection adds duplicate chunks. Before re-ingesting:
-
-1. Use the ChromaDB HTTP API to delete the collection, or
-2. Scale the proxy to 0 replicas, delete the `chroma_data` PVC data, then re-ingest
-
-A proper upsert/deduplication API is planned for a future release.

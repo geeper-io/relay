@@ -1,0 +1,97 @@
+{{- if .Values.chromadb.server.enabled }}
+# ── ChromaDB server deployment ────────────────────────────────────────────────
+# Used when replicaCount > 1. Relay pods connect via HTTP instead of local files.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "relay.fullname" . }}-chromadb
+  labels:
+    {{- include "relay.labels" . | nindent 4 }}
+    app.kubernetes.io/component: chromadb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "relay.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: chromadb
+  template:
+    metadata:
+      labels:
+        {{- include "relay.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: chromadb
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: chromadb
+          image: "{{ .Values.chromadb.server.image.repository }}:{{ .Values.chromadb.server.image.tag }}"
+          imagePullPolicy: {{ .Values.chromadb.server.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: IS_PERSISTENT
+              value: "TRUE"
+            - name: PERSIST_DIRECTORY
+              value: /chroma/data
+            - name: ANONYMIZED_TELEMETRY
+              value: "FALSE"
+          livenessProbe:
+            httpGet:
+              path: /api/v2/heartbeat
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /api/v2/heartbeat
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.chromadb.server.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /chroma/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "relay.fullname" . }}-chromadb
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "relay.fullname" . }}-chromadb
+  labels:
+    {{- include "relay.labels" . | nindent 4 }}
+    app.kubernetes.io/component: chromadb
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.chromadb.server.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "relay.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: chromadb
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "relay.fullname" . }}-chromadb
+  labels:
+    {{- include "relay.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.chromadb.server.persistence.storageClass }}
+  storageClassName: {{ .Values.chromadb.server.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.chromadb.server.persistence.size }}
+{{- end }}

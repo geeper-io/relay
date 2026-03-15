@@ -1,10 +1,10 @@
 # Default values for relay.
 
 replicaCount: 1
-# NOTE: replicaCount > 1 requires ReadWriteMany storage for chroma and
-# knowledgeBase PVCs (NFS, EFS, Azure Files, etc.) since the embedded
-# ChromaDB instance writes to the local filesystem. With RWO storage,
-# use replicaCount: 1 and rely on uvicorn --workers for concurrency.
+# NOTE: For replicaCount > 1, enable chromadb.server.enabled=true to run
+# ChromaDB as a separate deployment. Relay pods will connect via HTTP.
+# With chromadb.server.enabled=false (default), ChromaDB runs embedded
+# in the relay pod using a local PVC — only safe for replicaCount=1.
 
 image:
   repository: relay
@@ -238,6 +238,29 @@ redis:
     persistence:
       enabled: true
       size: 2Gi
+
+# ── ChromaDB server (multi-pod mode) ─────────────────────────────────────────
+# When enabled, a standalone ChromaDB deployment is created and relay pods
+# connect to it via HTTP. Required for replicaCount > 1.
+# When disabled (default), ChromaDB runs embedded in each relay pod (single replica only).
+chromadb:
+  server:
+    enabled: false
+    port: 8001
+    image:
+      repository: chromadb/chroma
+      tag: "latest"
+      pullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 2Gi
+    persistence:
+      storageClass: ""
+      size: 10Gi
 
 # ── Scheduling ────────────────────────────────────────────────────────────────
 nodeSelector: {}

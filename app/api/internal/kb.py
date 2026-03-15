@@ -8,26 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from app.config import Settings, get_settings
 from app.core.auth import require_admin
 from app.rag import embedder, vector_store
-from app.rag.ingestion import ingest_directory, ingest_file
+from app.rag.ingestion import ingest_file
 
 router = APIRouter(tags=["knowledge-base"], dependencies=[Depends(require_admin)])
 
-
-@router.post("/kb/ingest-directory")
-async def ingest_kb_directory(
-    directory: str = "knowledge_base",
-    settings: Settings = Depends(get_settings),
-):
-    path = Path(directory)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail=f"Directory '{directory}' not found")
-    results = ingest_directory(path)
-    total_chunks = sum(results.values())
-    return {
-        "ingested_files": len(results),
-        "total_chunks": total_chunks,
-        "files": results,
-    }
 
 
 @router.post("/kb/upload")

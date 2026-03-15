@@ -1,6 +1,6 @@
 ---
 title: Scaling & HA
-description: Horizontal scaling, HPA, and storage requirements for multi-replica deployments.
+description: Horizontal scaling, HPA, and ChromaDB server mode for multi-replica deployments.
 ---
 
 ## Single-replica (default)
@@ -11,29 +11,28 @@ For most teams, a single replica with a Redis backend for rate limiting and cach
 
 ## Multi-replica
 
-:::caution[Storage requirement]
-`replicaCount > 1` requires `ReadWriteMany` storage for the `chroma` and `knowledgeBase` PVCs. `ReadWriteOnce` volumes can only be mounted by one node at a time — a rolling deploy or multi-replica setup will fail to schedule.
-:::
+Running multiple relay replicas requires two things: a shared ChromaDB and shared state for rate limiting/caching.
 
-### RWX storage options
+### ChromaDB server mode
 
-| Cloud | Solution |
-|---|---|
-| AWS | Amazon EFS (with EFS CSI driver) |
-| Azure | Azure Files |
-| GCP | Filestore (NFS) |
-| On-prem | NFS, Ceph CephFS |
+By default, ChromaDB runs embedded in the relay pod and writes to a local PVC — this only works with a single pod. For `replicaCount > 1`, enable the ChromaDB server deployment so all relay pods share one vector store:
 
 ```yaml
-persistence:
-  chroma:
-    accessMode: ReadWriteMany
-    storageClass: efs-sc    # your RWX storage class
+replicaCount: 3
 
-  knowledgeBase:
-    accessMode: ReadWriteMany
-    storageClass: efs-sc
+chromadb:
+  server:
+    enabled: true        # deploys a separate chromadb pod with its own PVC
+    persistence:
+      size: 10Gi
+      storageClass: ""   # cluster default
 ```
+
+This creates a `chromadb` Deployment + Service + PVC. Relay pods automatically connect to it via HTTP — no other config needed.
+
+:::tip
+The ChromaDB server pod uses `ReadWriteOnce` storage (single pod, always). The relay pods are now fully stateless with respect to the vector store.
+:::
 
 ### Redis required for shared state
 
@@ -42,8 +41,25 @@ With multiple replicas, the rate limiter and cache **must** use Redis — otherw
 ```yaml
 redis:
   enabled: true
+```
 
+### Full multi-replica example
+
+```yaml
 replicaCount: 3
+
+chromadb:
+  server:
+    enabled: true
+
+redis:
+  enabled: true
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 70
 ```
 
 ## HPA (Horizontal Pod Autoscaler)
@@ -93,10 +109,10 @@ For zero-downtime rolling updates with `replicaCount >= 2`:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: llm-proxy-pdb
+  name: relay-pdb
 spec:
   minAvailable: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: llm-proxy
+      app.kubernetes.io/name: relay
 ```

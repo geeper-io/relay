@@ -40,28 +40,7 @@ rag:
 
 ## Ingesting documents
 
-### From a directory
-
-```bash
-curl -X POST http://localhost:8000/internal/kb/ingest-directory \
-  -H "Authorization: Bearer $PROXY_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"directory": "knowledge_base"}'
-```
-
-The `directory` path is relative to the proxy's working directory. Supported formats: `.txt`, `.md`, `.rst`.
-
-Response:
-
-```json
-{
-  "ingested_files": 12,
-  "total_chunks": 348,
-  "files": ["docs/api.md", "docs/guide.md", ...]
-}
-```
-
-### Single file upload
+Upload files via the admin API:
 
 ```bash
 curl -X POST http://localhost:8000/internal/kb/upload \
@@ -69,15 +48,15 @@ curl -X POST http://localhost:8000/internal/kb/upload \
   -F "file=@./runbook.md"
 ```
 
-### CLI script
-
-```bash
-python scripts/ingest_kb.py --directory ./docs
-```
+See [Knowledge Base](/docs/admin/knowledge-base) for bulk upload and Kubernetes Job examples.
 
 ## Storage
 
-ChromaDB persists to disk at `chroma_data/` (configurable). In Kubernetes this maps to a PVC:
+ChromaDB supports two deployment modes:
+
+### Embedded (default, single replica)
+
+ChromaDB runs inside the relay pod, persisting to a local PVC. Simple to operate but limited to one replica.
 
 ```yaml
 persistence:
@@ -87,9 +66,21 @@ persistence:
     accessMode: ReadWriteOnce
 ```
 
-:::caution
-`ReadWriteOnce` only works with `replicaCount: 1`. For multi-replica deployments, use `ReadWriteMany` (NFS, EFS, Azure Files). See [Scaling](/docs/deployment/scaling).
-:::
+### Server mode (multi-replica)
+
+ChromaDB runs as a separate Deployment. Relay pods connect to it over HTTP. Required when `replicaCount > 1`.
+
+```yaml
+replicaCount: 3
+
+chromadb:
+  server:
+    enabled: true
+    persistence:
+      size: 10Gi
+```
+
+See [Scaling](/docs/deployment/scaling) for the full multi-replica setup.
 
 ## Tuning retrieval
 

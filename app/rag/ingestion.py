@@ -67,14 +67,3 @@ def ingest_file(path: Path, collection_filter: dict | None = None) -> int:
         metadatas=metadatas,
     )
     return len(chunks)
-
-
-def ingest_directory(directory: Path) -> dict[str, int]:
-    """Ingest all supported files in a directory. Returns {filename: chunk_count}."""
-    results: dict[str, int] = {}
-    for path in sorted(directory.rglob("*")):
-        if path.suffix.lower() in SUPPORTED_EXTENSIONS and path.is_file():
-            n = ingest_file(path)
-            results[str(path)] = n
-            print(f"  Ingested {path.name}: {n} chunks")
-    return results

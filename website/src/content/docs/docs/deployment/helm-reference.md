@@ -75,16 +75,35 @@ Non-secret settings mounted as `/app/config/config.yaml`:
 
 ## Persistence
 
+Used in single-replica (embedded ChromaDB) mode only. Ignored when `chromadb.server.enabled: true`.
+
 | Key | Default | Description |
 |---|---|---|
-| `persistence.chroma.enabled` | `true` | Create ChromaDB PVC |
+| `persistence.chroma.enabled` | `true` | Create local ChromaDB PVC (single replica only) |
 | `persistence.chroma.size` | `10Gi` | |
 | `persistence.chroma.storageClass` | `""` | Empty = cluster default |
-| `persistence.chroma.accessMode` | `ReadWriteOnce` | Use `ReadWriteMany` for `replicaCount > 1` |
+| `persistence.chroma.accessMode` | `ReadWriteOnce` | |
 | `persistence.knowledgeBase.enabled` | `true` | Create knowledge base PVC |
 | `persistence.knowledgeBase.size` | `5Gi` | |
 | `persistence.knowledgeBase.storageClass` | `""` | |
 | `persistence.knowledgeBase.accessMode` | `ReadWriteOnce` | |
+
+## ChromaDB server (multi-replica)
+
+When enabled, deploys a standalone ChromaDB pod that all relay replicas share via HTTP. Required for `replicaCount > 1`. See [Scaling](/docs/deployment/scaling).
+
+| Key | Default | Description |
+|---|---|---|
+| `chromadb.server.enabled` | `false` | Deploy ChromaDB as a separate pod |
+| `chromadb.server.port` | `8001` | ChromaDB service port |
+| `chromadb.server.image.repository` | `chromadb/chroma` | |
+| `chromadb.server.image.tag` | `"latest"` | |
+| `chromadb.server.resources.requests.cpu` | `250m` | |
+| `chromadb.server.resources.requests.memory` | `512Mi` | |
+| `chromadb.server.resources.limits.cpu` | `"1"` | |
+| `chromadb.server.resources.limits.memory` | `2Gi` | |
+| `chromadb.server.persistence.size` | `10Gi` | PVC size for the ChromaDB pod |
+| `chromadb.server.persistence.storageClass` | `""` | Empty = cluster default |
 
 ## Service
 

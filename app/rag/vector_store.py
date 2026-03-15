@@ -21,10 +21,17 @@ class QueryResult:
 
 def init_vector_store(settings: Settings) -> chromadb.Collection:
     global _client, _collection
-    _client = chromadb.PersistentClient(
-        path=settings.chroma_persist_dir,
-        settings=ChromaSettings(anonymized_telemetry=False),
-    )
+    if settings.chroma_host:
+        _client = chromadb.HttpClient(
+            host=settings.chroma_host,
+            port=settings.chroma_port,
+            settings=ChromaSettings(anonymized_telemetry=False),
+        )
+    else:
+        _client = chromadb.PersistentClient(
+            path=settings.chroma_persist_dir,
+            settings=ChromaSettings(anonymized_telemetry=False),
+        )
     _collection = _client.get_or_create_collection(
         name=settings.chroma_collection_name,
         metadata={"hnsw:space": "cosine"},

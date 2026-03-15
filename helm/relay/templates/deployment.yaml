@@ -135,6 +135,14 @@ spec:
               value: "postgresql+asyncpg://{{ .Values.postgresql.auth.username }}:$(POSTGRES_PASSWORD)@{{ include "relay.postgresHost" . }}:5432/{{ .Values.postgresql.auth.database }}"
             {{- end }}
 
+            # ── ChromaDB server (when chromadb.server.enabled=true) ──────────
+            {{- if .Values.chromadb.server.enabled }}
+            - name: CHROMA_HOST
+              value: {{ include "relay.fullname" . }}-chromadb
+            - name: CHROMA_PORT
+              value: {{ .Values.chromadb.server.port | quote }}
+            {{- end }}
+
             # ── Redis URL (when redis subchart is enabled) ────────────────────
             {{- if .Values.redis.enabled }}
             {{- if .Values.redis.auth.enabled }}
@@ -166,7 +174,7 @@ spec:
             - name: config
               mountPath: /app/config
               readOnly: true
-            {{- if .Values.persistence.chroma.enabled }}
+            {{- if and .Values.persistence.chroma.enabled (not .Values.chromadb.server.enabled) }}
             - name: chroma
               mountPath: /app/chroma_data
             {{- end }}
@@ -180,7 +188,7 @@ spec:
         - name: config
           configMap:
             name: {{ include "relay.fullname" . }}-config
-        {{- if .Values.persistence.chroma.enabled }}
+        {{- if and .Values.persistence.chroma.enabled (not .Values.chromadb.server.enabled) }}
         - name: chroma
           persistentVolumeClaim:
             claimName: {{ include "relay.chromaPvcName" . }}

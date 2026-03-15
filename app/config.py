@@ -76,6 +76,8 @@ class Settings(BaseSettings):
     rag__context_separator: str = "\n\n---\n\n"
     chroma_persist_dir: str = "./chroma_data"
     chroma_collection_name: str = "internal_kb"
+    chroma_host: str = ""        # if set, use HTTP client (multi-pod); otherwise use local PersistentClient
+    chroma_port: int = 8001
 
     # PII
     pii__enabled: bool = True
