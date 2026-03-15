@@ -15,20 +15,32 @@ data:
     llm:
       default_model: {{ .Values.config.llm.defaultModel | quote }}
       allowed_models:
+        {{- if .Values.config.llm.allowedModels }}
         {{- range .Values.config.llm.allowedModels }}
         - {{ . | quote }}
         {{- end }}
+        {{- else }} []
+        {{- end }}
       fallback_models:
+        {{- if .Values.config.llm.fallbackModels }}
         {{- range .Values.config.llm.fallbackModels }}
         - {{ . | quote }}
         {{- end }}
+        {{- else }} []
+        {{- end }}
       model_aliases:
+        {{- if .Values.config.llm.modelAliases }}
         {{- range $k, $v := .Values.config.llm.modelAliases }}
         {{ $k }}: {{ $v | quote }}
         {{- end }}
+        {{- else }} {}
+        {{- end }}
       per_model_max_tokens:
+        {{- if .Values.config.llm.perModelMaxTokens }}
         {{- range $k, $v := .Values.config.llm.perModelMaxTokens }}
         {{ $k }}: {{ $v }}
+        {{- end }}
+        {{- else }} {}
         {{- end }}
 
     rag:
@@ -43,8 +55,11 @@ data:
       enabled: {{ .Values.config.pii.enabled }}
       score_threshold: {{ .Values.config.pii.scoreThreshold }}
       entities:
+        {{- if .Values.config.pii.entities }}
         {{- range .Values.config.pii.entities }}
         - {{ . }}
+        {{- end }}
+        {{- else }} []
         {{- end }}
 
     rate_limiting:
@@ -56,16 +71,19 @@ data:
       {{- end }}
       redis_url: ""
       defaults:
-        requests_per_minute: {{ .Values.config.rateLimiting.defaults.requestsPerMinute }}
-        tokens_per_minute: {{ .Values.config.rateLimiting.defaults.tokensPerMinute }}
-        tokens_per_day: {{ .Values.config.rateLimiting.defaults.tokensPerDay }}
+        requests_per_minute: {{ .Values.config.rateLimiting.defaults.requestsPerMinute | int }}
+        tokens_per_minute: {{ .Values.config.rateLimiting.defaults.tokensPerMinute | int }}
+        tokens_per_day: {{ .Values.config.rateLimiting.defaults.tokensPerDay | int }}
 
     content_policy:
       enabled: {{ .Values.config.contentPolicy.enabled }}
       max_input_tokens: {{ .Values.config.contentPolicy.maxInputTokens }}
       blocked_patterns:
+        {{- if .Values.config.contentPolicy.blockedPatterns }}
         {{- range .Values.config.contentPolicy.blockedPatterns }}
         - {{ . | quote }}
+        {{- end }}
+        {{- else }} []
         {{- end }}
 
     cache:

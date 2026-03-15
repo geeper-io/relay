@@ -45,9 +45,13 @@ class LLMClient:
     def resolve_model(self, model: str) -> str:
         resolved = self._settings.model_aliases.get(model, model)
         if resolved not in self._settings.allowed_models:
+            # Try matching ignoring provider prefix (e.g. "claude-x" == "anthropic/claude-x")
+            for allowed in self._settings.allowed_models:
+                if allowed.split("/", 1)[-1] == resolved or allowed.split("/", 1)[-1] == model:
+                    return allowed
             raise ModelNotAllowedError(
                 f"Model '{model}' is not available. "
-                f"Allowed: {', '.join(self._settings.allowed_models)}"
+                f"Allowed: {', '.join(m.split('/', 1)[-1] for m in self._settings.allowed_models)}"
             )
         return resolved
 

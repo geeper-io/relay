@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
 
     logging.basicConfig(level=settings.log_level.upper())
-    log.info("Starting LLM Proxy", log_level=settings.log_level)
+    log.info("Starting Geeper Relay", log_level=settings.log_level)
 
     # Database
     await create_all_tables()
@@ -90,7 +90,7 @@ async def lifespan(app: FastAPI):
     # Content policy
     init_content_policy(settings)
 
-    log.info("LLM Proxy ready", host=settings.host, port=settings.port)
+    log.info("Geeper Relay ready", host=settings.host, port=settings.port)
 
     # Hourly analytics refresh (Postgres only — no-op on SQLite)
     async def _refresh_loop():
@@ -106,14 +106,14 @@ async def lifespan(app: FastAPI):
     yield
 
     refresh_task.cancel()
-    log.info("Shutting down LLM Proxy")
+    log.info("Shutting down Geeper Relay")
 
 
 def create_app() -> FastAPI:
     settings = get_settings()
 
     app = FastAPI(
-        title="LLM Proxy",
+        title="Geeper Relay",
         description="In-house AI gateway with PII scrubbing, RAG, usage tracking, and Prometheus metrics",
         version="1.0.0",
         lifespan=lifespan,

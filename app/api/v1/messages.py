@@ -71,10 +71,10 @@ async def messages(
 ):
     request_id = raw_request.headers.get("x-request-id", str(uuid.uuid4()))
     start_time = time.monotonic()
-    model = llm_client.resolve_model(request_body.model or settings.default_model)
 
     m.ACTIVE_REQUESTS.inc()
     try:
+        model = llm_client.resolve_model(request_body.model or settings.default_model)
         # 1. Content policy check
         policy_msgs = [OAIMessage(role="user", content=_msg_text(msg)) for msg in request_body.messages]
         if request_body.system:
@@ -195,7 +195,6 @@ async def messages(
 
         asyncio.create_task(
             record_usage(
-                db,
                 user_id=identity.user_id,
                 team_id=identity.team_id,
                 model=model,
@@ -217,7 +216,7 @@ async def messages(
         return openai_response_to_anthropic(response, model)
 
     except ProxyError as exc:
-        _record_error(exc, model, identity, db, request_id, start_time, pii_count=0)
+        _record_error(exc, model, identity, request_id, start_time, pii_count=0)
         raise
     finally:
         m.ACTIVE_REQUESTS.dec()
@@ -337,7 +336,6 @@ async def _stream_anthropic(
 
         asyncio.create_task(
             record_usage(
-                db,
                 user_id=identity.user_id,
                 team_id=identity.team_id,
                 model=model,
@@ -358,7 +356,6 @@ def _record_error(
     exc: ProxyError,
     model: str,
     identity: ResolvedIdentity | None,
-    db: AsyncSession,
     request_id: str,
     start_time: float,
     pii_count: int,
@@ -377,7 +374,6 @@ def _record_error(
         latency_ms = int((time.monotonic() - start_time) * 1000)
         asyncio.create_task(
             record_usage(
-                db,
                 user_id=identity.user_id,
                 team_id=identity.team_id,
                 model=model,

@@ -7,14 +7,13 @@ from typing import Literal
 from sqlalchemy import Integer, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.engine import get_engine
+from app.db.engine import get_engine, get_session_factory
 from app.db.models import UsageRecord
 
 
 # ── Write ─────────────────────────────────────────────────────────────────────
 
 async def record_usage(
-    db: AsyncSession,
     *,
     user_id: str,
     team_id: str | None,
@@ -30,26 +29,27 @@ async def record_usage(
     status: str = "success",
     error_code: str | None = None,
 ) -> UsageRecord:
-    record = UsageRecord(
-        id=str(uuid.uuid4()),
-        user_id=user_id,
-        team_id=team_id,
-        model=model,
-        prompt_tokens=prompt_tokens,
-        completion_tokens=completion_tokens,
-        total_tokens=prompt_tokens + completion_tokens,
-        latency_ms=latency_ms,
-        request_id=request_id,
-        cost_usd=cost_usd,
-        cache_hit=cache_hit,
-        was_rag_used=was_rag_used,
-        pii_entities_scrubbed=pii_entities_scrubbed,
-        status=status,
-        error_code=error_code,
-    )
-    db.add(record)
-    await db.commit()
-    return record
+    async with get_session_factory()() as db:
+        record = UsageRecord(
+            id=str(uuid.uuid4()),
+            user_id=user_id,
+            team_id=team_id,
+            model=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
+            latency_ms=latency_ms,
+            request_id=request_id,
+            cost_usd=cost_usd,
+            cache_hit=cache_hit,
+            was_rag_used=was_rag_used,
+            pii_entities_scrubbed=pii_entities_scrubbed,
+            status=status,
+            error_code=error_code,
+        )
+        db.add(record)
+        await db.commit()
+        return record
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

@@ -151,7 +151,7 @@ def _key_page(name: str, email: str, raw_key: str, is_new: bool) -> str:
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LLM Proxy — API Key</title>
+  <title>Geeper Relay — API Key</title>
   <style>
     *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
     body {{
@@ -258,7 +258,7 @@ def _key_page(name: str, email: str, raw_key: str, is_new: bool) -> str:
 </head>
 <body>
 <div class="card">
-  <h1>Your LLM Proxy API Key</h1>
+  <h1>Your Geeper Relay API Key</h1>
   <p class="sub">{greeting} Signed in as <strong>{safe_name}</strong> ({safe_email})</p>
   <span class="badge">New key generated</span>
 
@@ -280,7 +280,7 @@ def _key_page(name: str, email: str, raw_key: str, is_new: bool) -> str:
 export ANTHROPIC_AUTH_TOKEN={raw_key}</pre>
   </div>
 
-  <div class="footer">LLM Proxy &mdash; Internal AI Gateway</div>
+  <div class="footer">Geeper Relay &mdash; Internal AI Gateway</div>
 </div>
 </body>
 </html>"""

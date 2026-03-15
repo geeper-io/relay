@@ -5,6 +5,7 @@ import re
 import uuid
 
 from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
+from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_anonymizer import AnonymizerEngine
 from presidio_anonymizer.entities import OperatorConfig
 
@@ -28,13 +29,22 @@ class PIIScrubber:
         self._threshold = settings.pii_score_threshold
         self._entities = settings.pii_entities
 
-        registry = RecognizerRegistry()
-        registry.load_predefined_recognizers()
-        for recognizer in CUSTOM_RECOGNIZERS:
-            registry.add_recognizer(recognizer)
+        if self._enabled:
+            nlp_engine = NlpEngineProvider(nlp_configuration={
+                "nlp_engine_name": "spacy",
+                "models": [{"lang_code": "en", "model_name": settings.pii_spacy_model}],
+            }).create_engine()
 
-        self._analyzer = AnalyzerEngine(registry=registry)
-        self._anonymizer = AnonymizerEngine()
+            registry = RecognizerRegistry()
+            registry.load_predefined_recognizers()
+            for recognizer in CUSTOM_RECOGNIZERS:
+                registry.add_recognizer(recognizer)
+
+            self._analyzer = AnalyzerEngine(nlp_engine=nlp_engine, registry=registry)
+            self._anonymizer = AnonymizerEngine()
+        else:
+            self._analyzer = None
+            self._anonymizer = None
 
     def scrub_messages(
         self,

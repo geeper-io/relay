@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     llm__default_model: str = "gpt-4o"
     llm__allowed_models: list[str] = [
         "gpt-4o", "gpt-4o-mini",
-        "claude-3-5-sonnet-20241022", "claude-3-haiku-20240307",
+        "claude-3-5-sonnet-20241022", "claude-haiku-4-5-20251001",
     ]
     llm__model_aliases: dict[str, str] = {}
     llm__per_model_max_tokens: dict[str, int] = {}
@@ -77,10 +77,11 @@ class Settings(BaseSettings):
 
     # PII
     pii__enabled: bool = True
+    pii__spacy_model: str = "en_core_web_sm"
     pii__score_threshold: float = 0.7
     pii__entities: list[str] = [
         "PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER",
-        "CREDIT_CARD", "US_SSN", "IP_ADDRESS", "LOCATION",
+        "CREDIT_CARD", "US_SSN", "IP_ADDRESS",
     ]
 
     # Rate limiting
@@ -175,6 +176,10 @@ class Settings(BaseSettings):
         return self.pii__enabled
 
     @property
+    def pii_spacy_model(self) -> str:
+        return self.pii__spacy_model
+
+    @property
     def pii_score_threshold(self) -> float:
         return self.pii__score_threshold
 
@@ -263,6 +268,6 @@ def get_settings() -> Settings:
     flat = _flatten_yaml(yaml_data)
     # Seed environment with YAML values (env vars still take priority)
     for k, v in flat.items():
-        if k not in os.environ:
+        if k not in os.environ and v is not None:
             os.environ[k] = json.dumps(v) if isinstance(v, (list, dict)) else str(v)
     return Settings()

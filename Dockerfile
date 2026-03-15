@@ -18,7 +18,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
  && pip install --no-cache-dir \
         torch --index-url https://download.pytorch.org/whl/cpu \
- && pip install --no-cache-dir -r requirements.txt
+ && pip install --no-cache-dir -r requirements.txt \
+ && pip install --no-cache-dir gunicorn
 
 # Download the spaCy NLP model used by Presidio.
 # Baked into the image so the container starts without a network call.
@@ -31,6 +32,12 @@ RUN find /venv -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true \
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
 FROM python:3.12-slim
+
+# Re-declare ARG so it's visible in this stage, then bake it as an env var.
+# pydantic-settings reads PII__SPACY_MODEL automatically, keeping the baked
+# model and the runtime config in sync without any manual override needed.
+ARG SPACY_MODEL=en_core_web_sm
+ENV PII__SPACY_MODEL=${SPACY_MODEL}
 
 # Non-root user — never run application code as root
 RUN groupadd --gid 1001 app \
@@ -58,12 +65,18 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
         "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')" \
         || exit 1
 
-# Use multiple uvicorn workers for production.
-# Override WORKERS at runtime: docker run -e WORKERS=8 ...
-ENV WORKERS=4
+# Use multiple workers for production.
+# Override WORKERS at runtime: docker run -e WORKERS=4 ...
+# --preload loads the app (spaCy, PyTorch, ChromaDB) once in the master process;
+# workers inherit memory via CoW fork instead of each loading models independently.
+# Tell glibc to return freed memory to the OS more aggressively.
+# Reduces RSS growth from allocator fragmentation (common with NumPy/PyTorch).
+ENV MALLOC_TRIM_THRESHOLD_=100000
+ENV WORKERS=1
 
-CMD uvicorn app.main:app \
-        --host 0.0.0.0 \
-        --port 8000 \
+CMD gunicorn app.main:app \
+        --bind 0.0.0.0:8000 \
         --workers ${WORKERS} \
-        --no-access-log
+        --worker-class uvicorn.workers.UvicornWorker \
+        --preload \
+        --access-logfile -
