@@ -6,8 +6,10 @@ When enabled, every LLM call is automatically traced in Langfuse with:
   - custom tags: team, rag_used, stream
 
 Set ANALYTICS__ENABLED=true + LANGFUSE_PUBLIC_KEY + LANGFUSE_SECRET_KEY to activate.
-Self-host: add the langfuse service from docker/docker-compose.yml and set
-LANGFUSE_HOST=http://langfuse:3000.
+Self-host: set LANGFUSE_HOST=http://langfuse:3000
+EU cloud: set LANGFUSE_HOST=https://cloud.langfuse.com (default is https://cloud.langfuse.com)
+
+Requires langfuse>=2.59.7,<3.0.0 — see requirements.txt.
 """
 from __future__ import annotations
 
@@ -44,14 +46,12 @@ def init_langfuse(settings) -> bool:
         )
         return False
 
-    # Inject credentials so the langfuse SDK inside litellm can pick them up
     import os
     os.environ.setdefault("LANGFUSE_PUBLIC_KEY", settings.langfuse_public_key)
     os.environ.setdefault("LANGFUSE_SECRET_KEY", settings.langfuse_secret_key)
     if settings.langfuse_host:
         os.environ.setdefault("LANGFUSE_HOST", settings.langfuse_host)
 
-    # LiteLLM has native Langfuse support — just add it to the callback lists
     if "langfuse" not in (litellm.success_callback or []):
         litellm.success_callback = list(litellm.success_callback or []) + ["langfuse"]
     if "langfuse" not in (litellm.failure_callback or []):
@@ -78,6 +78,7 @@ def build_trace_metadata(
     """
     Build the metadata dict to pass to litellm.acompletion(metadata=...).
     LiteLLM forwards these keys to Langfuse automatically.
+    See: https://docs.litellm.ai/docs/observability/langfuse_integration
     """
     tags = [f"model:{model}"]
     if team_id:
@@ -88,10 +89,11 @@ def build_trace_metadata(
         tags.append("stream:true")
 
     metadata = {
-        "langfuse_user_id": user_id,
-        "langfuse_session_id": request_id,  # groups turns in a conversation
-        "langfuse_tags": tags,
-        "langfuse_trace_name": "chat_completion",
+        "trace_id": request_id,
+        "session_id": request_id,
+        "trace_user_id": user_id,
+        "tags": tags,
+        "generation_name": "chat_completion",
     }
     if extra:
         metadata.update(extra)

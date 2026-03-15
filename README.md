@@ -5,7 +5,9 @@ An in-house AI gateway for teams that need controlled, observable access to LLMs
 ## Features
 
 - **Multi-provider** — OpenAI, Anthropic, Azure OpenAI, and [any LiteLLM-supported provider](https://docs.litellm.ai/docs/providers)
-- **Anthropic Messages API** — native `/v1/messages` endpoint so Claude Code and the Anthropic SDK connect without any adapter
+- **OpenAI-compatible** — `/v1/chat/completions` and `/v1/embeddings`; existing tools work without modification
+- **Anthropic Messages API** — native `/v1/messages` endpoint so Claude Code and the Anthropic SDK connect without any adapter; full tool use and streaming support
+- **Passthrough key mode** — employees point their SDK at Relay with their own provider key; Relay applies all middleware without issuing a separate key
 - **Google SSO portal** — employees log in with Google at `/auth/login` and receive an API key on a self-serve HTML page; no admin involvement required
 - **PII scrubbing** — strips personal data from requests before they leave your network using Microsoft Presidio (NLP-based) and custom regex patterns; restores placeholders in responses
 - **RAG / internal knowledge base** — enriches answers with context from your internal docs (Markdown, text) via ChromaDB vector search
