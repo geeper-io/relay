@@ -266,6 +266,9 @@ docker compose -f docker/docker-compose.yml up -d
 # Build the image alone (optional)
 docker build -t relay .
 
+# Build with the larger spaCy model for better PII accuracy (~750 MB extra)
+docker build --build-arg SPACY_MODEL=en_core_web_lg -t relay .
+
 # Run standalone (SQLite, no Postgres required)
 docker run --rm -p 8000:8000 \
   -e OPENAI_API_KEY=sk-... \
@@ -701,6 +704,8 @@ Every chat request passes through these stages in order:
 ## Development
 
 ```bash
+pip install -r requirements-dev.txt
+
 # Run tests
 pytest
 
@@ -711,4 +716,4 @@ uvicorn app.main:app --reload --port 8000
 RAG__ENABLED=false PII__ENABLED=false uvicorn app.main:app --reload
 ```
 
-Tests use SQLite in-memory and skip RAG by default. PII tests require the spaCy model (`python -m spacy download en_core_web_lg`).
+Tests use SQLite in-memory and skip RAG by default. PII tests require a spaCy model (`python -m spacy download en_core_web_sm`).

@@ -7,8 +7,9 @@ Geeper Relay has been deployed.
 {{- if .Values.ingress.enabled }}
   The proxy is available at:
   {{- range .Values.ingress.hosts }}
+  {{- $host := .host }}
   {{- range .paths }}
-    http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $.Values.ingress.hosts | first | regexFind "[^/]+" }}{{ .path }}
+    http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host }}{{ .path }}
   {{- end }}
   {{- end }}
 {{- else if eq .Values.service.type "LoadBalancer" }}

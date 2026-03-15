@@ -36,7 +36,3 @@ tenacity>=8.3.0
 structlog>=24.1.0
 cachetools>=5.3.0
 
-# Dev / Test
-pytest>=8.2.0
-pytest-asyncio>=0.23.0
-pytest-cov>=5.0.0

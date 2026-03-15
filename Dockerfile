@@ -2,6 +2,9 @@
 # Install all dependencies into a venv. Build tools stay in this stage only.
 FROM python:3.12-slim AS builder
 
+# SPACY_MODEL: sm (~12 MB, fast) | md (~43 MB) | lg (~750 MB, most accurate)
+ARG SPACY_MODEL=en_core_web_sm
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
     && rm -rf /var/lib/apt/lists/*
@@ -17,7 +20,11 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 # Download the spaCy NLP model used by Presidio.
 # Baked into the image so the container starts without a network call.
-RUN python -m spacy download en_core_web_lg
+RUN python -m spacy download ${SPACY_MODEL}
+
+# Strip __pycache__ and *.dist-info test files to trim venv size
+RUN find /venv -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true \
+ && find /venv -type d -name "tests" -path "*/site-packages/*" -exec rm -rf {} + 2>/dev/null || true
 
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
