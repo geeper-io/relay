@@ -43,9 +43,11 @@ class Settings(BaseSettings):
     server__port: int = 8000
     server__workers: int = 4
     server__log_level: str = "info"
+    server__allow_passthrough_keys: bool = True
 
     # LLM
     llm__default_model: str = "gpt-4o"
+    llm__default_embedding_model: str = ""
     llm__allowed_models: list[str] = [
         "gpt-4o", "gpt-4o-mini",
         "claude-3-5-sonnet-20241022", "claude-haiku-4-5-20251001",
@@ -136,8 +138,16 @@ class Settings(BaseSettings):
         return self.server__log_level
 
     @property
+    def allow_passthrough_keys(self) -> bool:
+        return self.server__allow_passthrough_keys
+
+    @property
     def default_model(self) -> str:
         return self.llm__default_model
+
+    @property
+    def default_embedding_model(self) -> str:
+        return self.llm__default_embedding_model
 
     @property
     def allowed_models(self) -> list[str]:

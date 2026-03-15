@@ -52,8 +52,8 @@ Response:
 {
   "id": "ak_01j...",
   "name": "dev-laptop",
-  "key": "llmp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-  "key_prefix": "llmp_xxxx",
+  "key": "gr-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "key_prefix": "gr-xxxx",
   "user_id": "user_01j...",
   "created_at": "2025-01-01T00:00:00Z"
 }

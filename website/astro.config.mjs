@@ -23,6 +23,7 @@ export default defineConfig({
           items: [
             { label: "Overview", slug: "docs/api-reference/overview" },
             { label: "Chat Completions", slug: "docs/api-reference/chat-completions" },
+            { label: "Embeddings", slug: "docs/api-reference/embeddings" },
             { label: "Messages", slug: "docs/api-reference/messages" },
             { label: "Models", slug: "docs/api-reference/models" },
             { label: "Health", slug: "docs/api-reference/health" },

@@ -11,6 +11,7 @@ proxy.db
 *.egg-info/
 dist/
 build/
+.DS_Store
 .venv/
 venv/
 website/node_modules

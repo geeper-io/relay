@@ -90,7 +90,7 @@ class AnthropicMessage(BaseModel):
 class AnthropicRequest(BaseModel):
     model: str
     messages: list[AnthropicMessage]
-    system: str | None = None
+    system: str | list[AnthropicTextBlock] | None = None
     max_tokens: int = 1024
     temperature: float | None = None
     top_p: float | None = None
@@ -135,7 +135,12 @@ def anthropic_to_openai_messages(request: AnthropicRequest) -> list[dict]:
     """Convert Anthropic-format messages to OpenAI-compatible message dicts."""
     messages: list[dict] = []
     if request.system:
-        messages.append({"role": "system", "content": request.system})
+        system_text = (
+            "\n".join(b.text for b in request.system if isinstance(b, AnthropicTextBlock))
+            if isinstance(request.system, list)
+            else request.system
+        )
+        messages.append({"role": "system", "content": system_text})
 
     for msg in request.messages:
         content = msg.content

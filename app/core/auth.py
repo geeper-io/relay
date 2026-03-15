@@ -20,10 +20,11 @@ _cache: TTLCache = TTLCache(maxsize=1024, ttl=60)
 class ResolvedIdentity:
     user_id: str
     team_id: str | None
-    key_id: str
+    key_id: str | None
     scopes: list[str]
     rpm_limit: int | None = None
     tpm_limit: int | None = None
+    passthrough_key: str | None = None  # set when client provides their own upstream key
 
 
 def _hash_key(raw_key: str) -> str:
@@ -46,6 +47,18 @@ async def resolve_identity(
     settings: Settings = Depends(get_settings),
 ) -> ResolvedIdentity:
     raw_key = _extract_bearer(request)
+
+    # Passthrough mode: any key that isn't a Relay-issued key goes straight to the upstream
+    if not raw_key.startswith("gr-") and settings.allow_passthrough_keys:
+        key_hash = _hash_key(raw_key)
+        return ResolvedIdentity(
+            user_id=f"passthrough:{key_hash[:16]}",
+            team_id=None,
+            key_id=None,
+            scopes=[],
+            passthrough_key=raw_key,
+        )
+
     key_hash = _hash_key(raw_key)
 
     # Check in-process cache first
@@ -71,9 +84,8 @@ async def resolve_identity(
     )
     _cache[key_hash] = identity
 
-    # Fire-and-forget last_used update (don't await to avoid slowing the hot path)
     import asyncio
-    asyncio.create_task(update_key_last_used(db, api_key.id))
+    asyncio.create_task(update_key_last_used(api_key.id))
 
     return identity
 

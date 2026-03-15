@@ -44,14 +44,17 @@ class LLMClient:
 
     def resolve_model(self, model: str) -> str:
         resolved = self._settings.model_aliases.get(model, model)
-        if resolved not in self._settings.allowed_models:
+        allowed = self._settings.allowed_models
+        if not allowed:
+            return resolved  # empty list = allow all
+        if resolved not in allowed:
             # Try matching ignoring provider prefix (e.g. "claude-x" == "anthropic/claude-x")
-            for allowed in self._settings.allowed_models:
-                if allowed.split("/", 1)[-1] == resolved or allowed.split("/", 1)[-1] == model:
-                    return allowed
+            for a in allowed:
+                if a.split("/", 1)[-1] == resolved or a.split("/", 1)[-1] == model:
+                    return a
             raise ModelNotAllowedError(
                 f"Model '{model}' is not available. "
-                f"Allowed: {', '.join(m.split('/', 1)[-1] for m in self._settings.allowed_models)}"
+                f"Allowed: {', '.join(a.split('/', 1)[-1] for a in allowed)}"
             )
         return resolved
 
@@ -66,15 +69,18 @@ class LLMClient:
 
     def estimate_cost(self, model: str, prompt_tokens: int, completion_tokens: int) -> float:
         """Return estimated cost in USD using LiteLLM's pricing table."""
-        try:
-            prompt_cost, completion_cost = litellm.cost_per_token(
-                model=model,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-            )
-            return round(prompt_cost + completion_cost, 8)
-        except Exception:
-            return 0.0
+        # Try the full model name first, then strip provider prefix as fallback
+        for m in (model, model.split("/", 1)[-1]):
+            try:
+                prompt_cost, completion_cost = litellm.cost_per_token(
+                    model=m,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                )
+                return round(prompt_cost + completion_cost, 8)
+            except Exception:
+                continue
+        return 0.0
 
     def _max_tokens_for(self, model: str, requested: int | None) -> int | None:
         limit = self._settings.llm__per_model_max_tokens.get(model)
@@ -100,6 +106,7 @@ class LLMClient:
         max_tokens: int | None = None,
         temperature: float | None = None,
         trace_metadata: dict | None = None,
+        api_key: str | None = None,
         **kwargs: Any,
     ) -> litellm.ModelResponse:
         try:
@@ -112,6 +119,8 @@ class LLMClient:
                 cache={"no-cache": False} if self._settings.cache_enabled else None,
                 **kwargs,
             )
+            if api_key:
+                call_kwargs["api_key"] = api_key
             if self._settings.fallback_models:
                 call_kwargs["fallbacks"] = self._settings.fallback_models
             if len(self._settings.allowed_models) > 1:
@@ -133,6 +142,7 @@ class LLMClient:
         max_tokens: int | None = None,
         temperature: float | None = None,
         trace_metadata: dict | None = None,
+        api_key: str | None = None,
         **kwargs: Any,
     ) -> AsyncGenerator[litellm.utils.StreamingChoices, None]:
         try:
@@ -146,6 +156,8 @@ class LLMClient:
                 # Streaming responses are not cached — cache=None skips cache lookup
                 **kwargs,
             )
+            if api_key:
+                call_kwargs["api_key"] = api_key
             if self._settings.fallback_models:
                 call_kwargs["fallbacks"] = self._settings.fallback_models
 

@@ -2,7 +2,7 @@
 
 Drop-in target for Claude Code and Anthropic SDK clients:
     export ANTHROPIC_BASE_URL=http://your-proxy:8000
-    export ANTHROPIC_AUTH_TOKEN=llmp-<your-key>
+    export ANTHROPIC_AUTH_TOKEN=gr-<your-key>
 """
 from __future__ import annotations
 
@@ -13,15 +13,12 @@ import uuid
 from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter, Depends, Request, Response
-from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from fastapi.responses import JSONResponse, StreamingResponse
 from app.config import Settings, get_settings
 from app.core.auth import ResolvedIdentity, resolve_identity
 from app.core.content_policy import ContentPolicy, get_content_policy
 from app.core.exceptions import ProxyError
 from app.core.rate_limiter import RateLimiter, get_rate_limiter
-from app.db.engine import get_db
 from app.db.repositories.usage import record_usage
 from app.llm.client import LLMClient, get_llm_client
 from app.metrics import prometheus as m
@@ -61,7 +58,6 @@ async def messages(
     raw_response: Response,
     identity: ResolvedIdentity = Depends(resolve_identity),
     settings: Settings = Depends(get_settings),
-    db: AsyncSession = Depends(get_db),
     scrubber: PIIScrubber = Depends(get_scrubber),
     restorer: PIIRestorer = Depends(get_restorer),
     retriever: RAGRetriever = Depends(get_retriever),
@@ -71,14 +67,20 @@ async def messages(
 ):
     request_id = raw_request.headers.get("x-request-id", str(uuid.uuid4()))
     start_time = time.monotonic()
+    model = request_body.model or settings.default_model
 
     m.ACTIVE_REQUESTS.inc()
     try:
-        model = llm_client.resolve_model(request_body.model or settings.default_model)
+        model = llm_client.resolve_model(model)
         # 1. Content policy check
         policy_msgs = [OAIMessage(role="user", content=_msg_text(msg)) for msg in request_body.messages]
         if request_body.system:
-            policy_msgs.insert(0, OAIMessage(role="system", content=request_body.system))
+            system_text = (
+                "\n".join(b.text for b in request_body.system if isinstance(b, AnthropicTextBlock))
+                if isinstance(request_body.system, list)
+                else request_body.system
+            )
+            policy_msgs.insert(0, OAIMessage(role="system", content=system_text))
         policy.check(policy_msgs)
 
         # 2. Convert to OpenAI-format dicts for the pipeline
@@ -124,6 +126,8 @@ async def messages(
             llm_kwargs["tool_choice"] = anthropic_tool_choice_to_openai(request_body.tool_choice)
         if request_body.stop_sequences:
             llm_kwargs["stop"] = request_body.stop_sequences
+        if identity.passthrough_key:
+            llm_kwargs["api_key"] = identity.passthrough_key
 
         trace_metadata = build_trace_metadata(
             user_id=identity.user_id,
@@ -144,7 +148,6 @@ async def messages(
                     restoration_map=restoration_map,
                     restorer=restorer,
                     identity=identity,
-                    db=db,
                     request_id=request_id,
                     start_time=start_time,
                     rag_used=rag_used,
@@ -193,22 +196,23 @@ async def messages(
         if cache_hit:
             m.CACHE_HITS.labels(model=model).inc()
 
-        asyncio.create_task(
-            record_usage(
-                user_id=identity.user_id,
-                team_id=identity.team_id,
-                model=model,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                latency_ms=latency_ms,
-                request_id=request_id,
-                cost_usd=cost_usd,
-                cache_hit=cache_hit,
-                was_rag_used=rag_used,
-                pii_entities_scrubbed=pii_count,
-                status="success",
+        if not identity.passthrough_key:
+            asyncio.create_task(
+                record_usage(
+                    user_id=identity.user_id,
+                    team_id=identity.team_id,
+                    model=model,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    latency_ms=latency_ms,
+                    request_id=request_id,
+                    cost_usd=cost_usd,
+                    cache_hit=cache_hit,
+                    was_rag_used=rag_used,
+                    pii_entities_scrubbed=pii_count,
+                    status="success",
+                )
             )
-        )
 
         raw_response.headers["X-Request-ID"] = request_id
         if cache_hit:
@@ -217,7 +221,13 @@ async def messages(
 
     except ProxyError as exc:
         _record_error(exc, model, identity, request_id, start_time, pii_count=0)
-        raise
+        from app.core.exceptions import RateLimitError
+        headers = {"Retry-After": str(exc.retry_after)} if isinstance(exc, RateLimitError) else {}
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"error": {"type": exc.error_code, "message": exc.message}},
+            headers=headers,
+        )
     finally:
         m.ACTIVE_REQUESTS.dec()
 
@@ -231,7 +241,6 @@ async def _stream_anthropic(
     restoration_map: dict[str, str],
     restorer: PIIRestorer,
     identity: ResolvedIdentity,
-    db: AsyncSession,
     request_id: str,
     start_time: float,
     rag_used: bool,
@@ -242,8 +251,14 @@ async def _stream_anthropic(
     message_id = f"msg_{uuid.uuid4().hex[:24]}"
     prompt_tokens = 0
     completion_tokens = 0
-    buffer = ""
+    text_buffer = ""
     finish_reason = None
+
+    # Content block tracking (lazily opened)
+    next_block_index = 0
+    text_block_index: int | None = None      # set when first text arrives
+    # OAI tool call index → {block_index, id, name}
+    tool_block: dict[int, dict] = {}
 
     def _sse(event: str, data: dict) -> str:
         return f"event: {event}\ndata: {json.dumps(data)}\n\n"
@@ -260,11 +275,6 @@ async def _stream_anthropic(
             "stop_sequence": None,
             "usage": {"input_tokens": 0, "output_tokens": 0},
         },
-    })
-    yield _sse("content_block_start", {
-        "type": "content_block_start",
-        "index": 0,
-        "content_block": {"type": "text", "text": ""},
     })
     yield _sse("ping", {"type": "ping"})
 
@@ -286,32 +296,77 @@ async def _stream_anthropic(
 
             delta = chunk.choices[0].delta
             delta_content = getattr(delta, "content", None) or ""
+            delta_tool_calls = getattr(delta, "tool_calls", None) or []
             chunk_finish = chunk.choices[0].finish_reason
             if chunk_finish:
                 finish_reason = chunk_finish
 
+            # ── Text content ──────────────────────────────────────────────────
             if delta_content:
-                buffer += delta_content
-                from app.pii.restorer import _PLACEHOLDER_RE  # noqa: F401
-                if not ("<<PII_" in buffer and ">>" not in buffer.split("<<PII_")[-1]):
-                    flushed = restorer.restore(buffer, restoration_map)
-                    buffer = ""
+                if text_block_index is None:
+                    text_block_index = next_block_index
+                    next_block_index += 1
+                    yield _sse("content_block_start", {
+                        "type": "content_block_start",
+                        "index": text_block_index,
+                        "content_block": {"type": "text", "text": ""},
+                    })
+                text_buffer += delta_content
+                if not ("<<PII_" in text_buffer and ">>" not in text_buffer.split("<<PII_")[-1]):
+                    flushed = restorer.restore(text_buffer, restoration_map)
+                    text_buffer = ""
                     yield _sse("content_block_delta", {
                         "type": "content_block_delta",
-                        "index": 0,
+                        "index": text_block_index,
                         "delta": {"type": "text_delta", "text": flushed},
                     })
 
-        # Flush any remaining buffered content
-        if buffer:
-            flushed = restorer.restore(buffer, restoration_map)
+            # ── Tool calls ────────────────────────────────────────────────────
+            for tc in delta_tool_calls:
+                tc_idx = tc.index
+                if tc_idx not in tool_block:
+                    blk = next_block_index
+                    next_block_index += 1
+                    tool_block[tc_idx] = {"block_index": blk, "id": tc.id or "", "name": ""}
+                    # name arrives in first chunk
+                    name = getattr(tc.function, "name", "") or ""
+                    tool_block[tc_idx]["name"] = name
+                    yield _sse("content_block_start", {
+                        "type": "content_block_start",
+                        "index": blk,
+                        "content_block": {"type": "tool_use", "id": tc.id or "", "name": name, "input": {}},
+                    })
+                else:
+                    # name may arrive in subsequent chunks for some providers
+                    name = getattr(tc.function, "name", "") or ""
+                    if name:
+                        tool_block[tc_idx]["name"] = name
+
+                partial_json = getattr(tc.function, "arguments", "") or ""
+                if partial_json:
+                    yield _sse("content_block_delta", {
+                        "type": "content_block_delta",
+                        "index": tool_block[tc_idx]["block_index"],
+                        "delta": {"type": "input_json_delta", "partial_json": partial_json},
+                    })
+
+        # ── Flush remaining text buffer ───────────────────────────────────────
+        if text_buffer and text_block_index is not None:
+            flushed = restorer.restore(text_buffer, restoration_map)
             yield _sse("content_block_delta", {
                 "type": "content_block_delta",
-                "index": 0,
+                "index": text_block_index,
                 "delta": {"type": "text_delta", "text": flushed},
             })
 
-        yield _sse("content_block_stop", {"type": "content_block_stop", "index": 0})
+        # ── Close all content blocks in order ─────────────────────────────────
+        open_blocks = []
+        if text_block_index is not None:
+            open_blocks.append(text_block_index)
+        for info in tool_block.values():
+            open_blocks.append(info["block_index"])
+        for blk in sorted(open_blocks):
+            yield _sse("content_block_stop", {"type": "content_block_stop", "index": blk})
         yield _sse("message_delta", {
             "type": "message_delta",
             "delta": {
@@ -334,22 +389,23 @@ async def _stream_anthropic(
         m.TOKENS_USED.labels(model=model, token_type="completion").inc(completion_tokens)
         m.COST_USD.labels(model=model).inc(cost_usd)
 
-        asyncio.create_task(
-            record_usage(
-                user_id=identity.user_id,
-                team_id=identity.team_id,
-                model=model,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                latency_ms=latency_ms,
-                request_id=request_id,
-                cost_usd=cost_usd,
-                cache_hit=False,
-                was_rag_used=rag_used,
-                pii_entities_scrubbed=pii_count,
-                status="success",
+        if not identity.passthrough_key:
+            asyncio.create_task(
+                record_usage(
+                    user_id=identity.user_id,
+                    team_id=identity.team_id,
+                    model=model,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    latency_ms=latency_ms,
+                    request_id=request_id,
+                    cost_usd=cost_usd,
+                    cache_hit=False,
+                    was_rag_used=rag_used,
+                    pii_entities_scrubbed=pii_count,
+                    status="success",
+                )
             )
-        )
 
 
 def _record_error(
@@ -370,7 +426,7 @@ def _record_error(
 
     m.REQUEST_COUNT.labels(model=model, status=status).inc()
 
-    if identity:
+    if identity and not identity.passthrough_key:
         latency_ms = int((time.monotonic() - start_time) * 1000)
         asyncio.create_task(
             record_usage(

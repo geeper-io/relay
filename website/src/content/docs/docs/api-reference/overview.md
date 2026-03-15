@@ -7,28 +7,45 @@ Geeper Relay exposes three groups of endpoints:
 
 | Group | Path prefix | Auth |
 |---|---|---|
-| OpenAI-compatible inference | `/v1/chat/completions`, `/v1/models` | API key |
+| OpenAI-compatible inference | `/v1/chat/completions`, `/v1/embeddings`, `/v1/models` | API key |
 | Anthropic Messages API | `/v1/messages` | API key |
 | Admin | `/internal/*` | Master key |
 | Health & metrics | `/healthz`, `/readyz`, `/metrics` | None |
 
 ## Authentication
 
-### API key (inference endpoints)
+Relay supports two authentication modes simultaneously.
 
-Pass the key in the `Authorization` header:
+### Relay-issued keys
+
+Keys issued by Relay start with `gr-`. Pass them in the `Authorization` header:
 
 ```
-Authorization: Bearer llmp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+Authorization: Bearer gr-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 Or, for Anthropic-format clients:
 
 ```
-x-api-key: llmp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+x-api-key: gr-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 Keys are issued via the admin API (`POST /internal/api-keys`) or via Google SSO. See [First API key](/docs/getting-started/first-api-key).
+
+### Passthrough keys (bring your own)
+
+When `server.allow_passthrough_keys` is `true` (default), any key that does **not** start with `gr-` is forwarded directly to the upstream provider. The request still goes through all Relay middleware (PII scrubbing, content policy, rate limiting).
+
+This lets employees point their existing SDK at Relay without being issued a separate key:
+
+```bash
+export ANTHROPIC_BASE_URL=https://relay.company.com
+# ANTHROPIC_API_KEY stays as their own key — no changes needed
+```
+
+Works with any provider — Anthropic, OpenAI, Azure, Gemini, etc. The upstream provider authenticates the key; Relay never validates it.
+
+To restrict access to Relay-issued keys only, set `allow_passthrough_keys: false` in config.
 
 ### Master key (admin endpoints)
 

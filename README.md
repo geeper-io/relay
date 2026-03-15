@@ -60,7 +60,7 @@ PROXY_MASTER_KEY=your-secret-admin-key
 python scripts/create_api_key.py --external-id alice@company.com --team engineering
 ```
 
-This prints a key like `llmp-...`. Save it — it is shown only once.
+This prints a key like `gr-...`. Save it — it is shown only once.
 
 ### 4. Run
 
@@ -76,7 +76,7 @@ Using curl:
 
 ```bash
 curl http://localhost:8000/v1/chat/completions \
-  -H "Authorization: Bearer llmp-..." \
+  -H "Authorization: Bearer gr-..." \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gpt-4o",
@@ -90,7 +90,7 @@ Using the OpenAI Python SDK (just change the `base_url`):
 from openai import OpenAI
 
 client = OpenAI(
-    api_key="llmp-...",
+    api_key="gr-...",
     base_url="http://localhost:8000/v1",
 )
 
@@ -107,7 +107,7 @@ Using the **Anthropic Python SDK** or **Claude Code** via the native Messages AP
 import anthropic
 
 client = anthropic.Anthropic(
-    api_key="llmp-...",
+    api_key="gr-...",
     base_url="http://localhost:8000",
 )
 
@@ -122,7 +122,7 @@ print(message.content[0].text)
 ```bash
 # Claude Code — point it at the proxy instead of Anthropic directly
 export ANTHROPIC_BASE_URL=http://localhost:8000
-export ANTHROPIC_AUTH_TOKEN=llmp-...
+export ANTHROPIC_AUTH_TOKEN=gr-...
 claude
 ```
 
@@ -437,7 +437,7 @@ The proxy exposes a native Anthropic Messages API endpoint alongside the OpenAI-
 
 ```bash
 curl http://localhost:8000/v1/messages \
-  -H "Authorization: Bearer llmp-..." \
+  -H "Authorization: Bearer gr-..." \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-3-5-sonnet-20241022",
@@ -469,7 +469,7 @@ GET /auth/login      → redirect to Google consent screen
 GET /auth/callback   → exchange code, create user, issue key, show HTML page
 ```
 
-The callback page displays the generated `llmp-...` key once with a copy button and the two shell commands needed to configure Claude Code.
+The callback page displays the generated `gr-...` key once with a copy button and the two shell commands needed to configure Claude Code.
 
 **Setup:**
 
@@ -541,7 +541,7 @@ curl -X POST "http://localhost:8000/internal/users?external_id=bob@company.com&t
 # Issue an API key
 curl -X POST "http://localhost:8000/internal/api-keys?user_id=<user-id>&name=laptop" \
   -H "Authorization: Bearer $MASTER_KEY"
-# Returns: { "key": "llmp-...", "key_prefix": "llmp-XXXXXX", "id": "..." }
+# Returns: { "key": "gr-...", "key_prefix": "gr-XXXXXX", "id": "..." }
 # The raw key is shown once and not stored.
 ```
 

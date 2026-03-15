@@ -11,14 +11,16 @@ The proxy reads a YAML config file on startup. The path is set via the `CONFIG_F
 |---|---|---|---|
 | `workers` | int | `4` | Number of uvicorn worker processes |
 | `log_level` | string | `"info"` | Log level: `debug`, `info`, `warning`, `error` |
+| `allow_passthrough_keys` | bool | `true` | Accept non-`gr-` keys and forward them to the upstream provider |
 
-Helm: `config.workers`, `config.logLevel`
+Helm: `config.workers`, `config.logLevel`, `config.server.allowPassthroughKeys`
 
 ## `llm`
 
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `default_model` | string | `"gpt-4o"` | Model used when none is specified in the request |
+| `default_embedding_model` | string | `""` | Model used by `/v1/embeddings` when none is specified |
 | `allowed_models` | list | see below | Requests for any other model are rejected with 400 |
 | `fallback_models` | list | `[]` | Tried in order when the primary model returns an error |
 | `model_aliases` | map | `{}` | e.g. `gpt-4: gpt-4o` — rewrite model names before routing |
@@ -28,8 +30,8 @@ Default `allowed_models`:
 ```yaml
 - gpt-4o
 - gpt-4o-mini
-- claude-3-5-sonnet-20241022
-- claude-3-haiku-20240307
+- anthropic/claude-sonnet-4-6
+- anthropic/claude-haiku-4-5-20251001
 ```
 
 Helm: `config.llm.*`
@@ -115,18 +117,17 @@ Helm: `config.analytics.*`, `secrets.langfuse*`
 server:
   workers: 4
   log_level: info
+  allow_passthrough_keys: true
 
 llm:
-  default_model: gpt-4o
+  default_model: anthropic/claude-haiku-4-5-20251001
+  default_embedding_model: text-embedding-3-small
   allowed_models:
-    - gpt-4o
-    - gpt-4o-mini
-    - claude-3-5-sonnet-20241022
+    - anthropic/claude-haiku-4-5-20251001
+    - anthropic/claude-sonnet-4-6
   fallback_models: []
-  model_aliases:
-    gpt-4: gpt-4o
-  per_model_max_tokens:
-    gpt-4o: 8192
+  model_aliases: {}
+  per_model_max_tokens: {}
 
 rag:
   enabled: true

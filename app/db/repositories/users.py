@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.engine import get_session_factory
 from app.db.models import ApiKey, Team, User
 
 
@@ -53,7 +54,7 @@ async def create_api_key(
     scopes: list[str] | None = None,
 ) -> tuple[str, ApiKey]:
     """Returns (raw_key, ApiKey). raw_key is shown once and not stored."""
-    raw_key = "llmp-" + secrets.token_urlsafe(32)
+    raw_key = "gr-" + secrets.token_urlsafe(32)
     key_hash = _hash_key(raw_key)
     key_prefix = raw_key[:12]
 
@@ -71,9 +72,10 @@ async def create_api_key(
     return raw_key, api_key
 
 
-async def update_key_last_used(db: AsyncSession, key_id: str) -> None:
-    result = await db.execute(select(ApiKey).where(ApiKey.id == key_id))
-    key = result.scalar_one_or_none()
-    if key:
-        key.last_used_at = datetime.now(timezone.utc)
-        await db.commit()
+async def update_key_last_used(key_id: str) -> None:
+    async with get_session_factory()() as db:
+        result = await db.execute(select(ApiKey).where(ApiKey.id == key_id))
+        key = result.scalar_one_or_none()
+        if key:
+            key.last_used_at = datetime.now(timezone.utc)
+            await db.commit()

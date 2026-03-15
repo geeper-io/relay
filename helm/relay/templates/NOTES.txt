@@ -36,7 +36,7 @@ Geeper Relay has been deployed.
 2. Make a test request:
 
      curl http://localhost:8000/v1/chat/completions \
-       -H "Authorization: Bearer llmp-..." \
+       -H "Authorization: Bearer gr-..." \
        -H "Content-Type: application/json" \
        -d '{"model":"gpt-4o","messages":[{"role":"user","content":"Hello!"}]}'
 

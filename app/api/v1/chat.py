@@ -8,15 +8,12 @@ import uuid
 from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter, Depends, Request, Response
-from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from fastapi.responses import JSONResponse, StreamingResponse
 from app.config import Settings, get_settings
 from app.core.auth import ResolvedIdentity, resolve_identity
 from app.core.content_policy import ContentPolicy, get_content_policy
 from app.core.exceptions import ProxyError
 from app.core.rate_limiter import RateLimiter, get_rate_limiter
-from app.db.engine import get_db
 from app.db.repositories.usage import record_usage
 from app.llm.client import LLMClient, get_llm_client
 from app.metrics import prometheus as m
@@ -70,7 +67,6 @@ async def chat_completions(
     raw_response: Response,
     identity: ResolvedIdentity = Depends(resolve_identity),
     settings: Settings = Depends(get_settings),
-    db: AsyncSession = Depends(get_db),
     scrubber: PIIScrubber = Depends(get_scrubber),
     restorer: PIIRestorer = Depends(get_restorer),
     retriever: RAGRetriever = Depends(get_retriever),
@@ -80,10 +76,11 @@ async def chat_completions(
 ):
     request_id = raw_request.headers.get("x-request-id", str(uuid.uuid4()))
     start_time = time.monotonic()
+    model = request_body.model or settings.default_model
 
     m.ACTIVE_REQUESTS.inc()
     try:
-        model = llm_client.resolve_model(request_body.model or settings.default_model)
+        model = llm_client.resolve_model(model)
         # 1. Content policy check
         policy.check(request_body.messages)
 
@@ -129,6 +126,8 @@ async def chat_completions(
             llm_kwargs["tools"] = [t.model_dump() for t in request_body.tools]
         if request_body.tool_choice:
             llm_kwargs["tool_choice"] = request_body.tool_choice
+        if identity.passthrough_key:
+            llm_kwargs["api_key"] = identity.passthrough_key
 
         trace_metadata = build_trace_metadata(
             user_id=identity.user_id,
@@ -149,7 +148,6 @@ async def chat_completions(
                     restoration_map=restoration_map,
                     restorer=restorer,
                     identity=identity,
-                    db=db,
                     request_id=request_id,
                     start_time=start_time,
                     rag_used=rag_used,
@@ -198,22 +196,23 @@ async def chat_completions(
         if cache_hit:
             m.CACHE_HITS.labels(model=model).inc()
 
-        asyncio.create_task(
-            record_usage(
-                user_id=identity.user_id,
-                team_id=identity.team_id,
-                model=model,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                latency_ms=latency_ms,
-                request_id=request_id,
-                cost_usd=cost_usd,
-                cache_hit=cache_hit,
-                was_rag_used=rag_used,
-                pii_entities_scrubbed=pii_count,
-                status="success",
+        if not identity.passthrough_key:
+            asyncio.create_task(
+                record_usage(
+                    user_id=identity.user_id,
+                    team_id=identity.team_id,
+                    model=model,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    latency_ms=latency_ms,
+                    request_id=request_id,
+                    cost_usd=cost_usd,
+                    cache_hit=cache_hit,
+                    was_rag_used=rag_used,
+                    pii_entities_scrubbed=pii_count,
+                    status="success",
+                )
             )
-        )
 
         raw_response.headers["X-Request-ID"] = request_id
         if cache_hit:
@@ -222,7 +221,13 @@ async def chat_completions(
 
     except ProxyError as exc:
         _record_error(exc, model, identity, request_id, start_time, pii_count=0)
-        raise
+        from app.core.exceptions import RateLimitError
+        headers = {"Retry-After": str(exc.retry_after)} if isinstance(exc, RateLimitError) else {}
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"error": {"type": exc.error_code, "message": exc.message}},
+            headers=headers,
+        )
     finally:
         m.ACTIVE_REQUESTS.dec()
 
@@ -236,7 +241,6 @@ async def _stream_response(
     restoration_map: dict[str, str],
     restorer: PIIRestorer,
     identity: ResolvedIdentity,
-    db: AsyncSession,
     request_id: str,
     start_time: float,
     rag_used: bool,
@@ -246,7 +250,17 @@ async def _stream_response(
 ) -> AsyncGenerator[str, None]:
     prompt_tokens = 0
     completion_tokens = 0
-    buffer = ""  # partial-placeholder buffer
+    buffer = ""  # partial-placeholder buffer for text content
+    tool_calls: dict[int, dict] = {}  # index -> {id, name, arguments}
+
+    def _sse(chunk_id, created, delta, finish_reason=None):
+        return "data: " + json.dumps({
+            "id": chunk_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model,
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
+        }) + "\n\n"
 
     try:
         async for chunk in llm_client.stream(
@@ -257,7 +271,6 @@ async def _stream_response(
             trace_metadata=trace_metadata,
             **kwargs,
         ):
-            # Extract usage from final chunk if present
             if hasattr(chunk, "usage") and chunk.usage:
                 prompt_tokens = getattr(chunk.usage, "prompt_tokens", 0) or 0
                 completion_tokens = getattr(chunk.usage, "completion_tokens", 0) or 0
@@ -267,54 +280,45 @@ async def _stream_response(
 
             delta = chunk.choices[0].delta
             delta_content = getattr(delta, "content", None) or ""
+            delta_tool_calls = getattr(delta, "tool_calls", None) or []
             finish_reason = chunk.choices[0].finish_reason
 
+            # ── Text content ──────────────────────────────────────────────────
             if delta_content:
                 buffer += delta_content
-                # Only flush when we're confident there's no partial placeholder
-                from app.pii.restorer import _PLACEHOLDER_RE
                 if not ("<<PII_" in buffer and ">>" not in buffer.split("<<PII_")[-1]):
                     flushed = restorer.restore(buffer, restoration_map)
                     buffer = ""
-                    sse_chunk = {
-                        "id": chunk.id,
-                        "object": "chat.completion.chunk",
-                        "created": chunk.created,
-                        "model": model,
-                        "choices": [{
-                            "index": 0,
-                            "delta": {"content": flushed},
-                            "finish_reason": None,
-                        }],
-                    }
-                    yield f"data: {json.dumps(sse_chunk)}\n\n"
+                    yield _sse(chunk.id, chunk.created, {"content": flushed})
+
+            # ── Tool call deltas ──────────────────────────────────────────────
+            for tc in delta_tool_calls:
+                idx = tc.index
+                if idx not in tool_calls:
+                    tool_calls[idx] = {"id": tc.id or "", "name": "", "arguments": ""}
+                name = getattr(tc.function, "name", "") or ""
+                args = getattr(tc.function, "arguments", "") or ""
+                if name:
+                    tool_calls[idx]["name"] = name
+                tool_calls[idx]["arguments"] += args
+
+                tc_delta: dict = {"tool_calls": [{"index": idx, "function": {}}]}
+                if tc.id:
+                    tc_delta["tool_calls"][0]["id"] = tc.id
+                    tc_delta["tool_calls"][0]["type"] = "function"
+                if name:
+                    tc_delta["tool_calls"][0]["function"]["name"] = name
+                if args:
+                    tc_delta["tool_calls"][0]["function"]["arguments"] = args
+                yield _sse(chunk.id, chunk.created, tc_delta)
 
             if finish_reason:
-                # Flush remaining buffer
                 if buffer:
                     flushed = restorer.restore(buffer, restoration_map)
                     buffer = ""
-                    sse_chunk = {
-                        "id": chunk.id,
-                        "object": "chat.completion.chunk",
-                        "created": chunk.created,
-                        "model": model,
-                        "choices": [{
-                            "index": 0,
-                            "delta": {"content": flushed},
-                            "finish_reason": finish_reason,
-                        }],
-                    }
-                    yield f"data: {json.dumps(sse_chunk)}\n\n"
+                    yield _sse(chunk.id, chunk.created, {"content": flushed}, finish_reason)
                 else:
-                    sse_chunk = {
-                        "id": chunk.id,
-                        "object": "chat.completion.chunk",
-                        "created": chunk.created,
-                        "model": model,
-                        "choices": [{"index": 0, "delta": {}, "finish_reason": finish_reason}],
-                    }
-                    yield f"data: {json.dumps(sse_chunk)}\n\n"
+                    yield _sse(chunk.id, chunk.created, {}, finish_reason)
 
         yield "data: [DONE]\n\n"
 
@@ -330,22 +334,23 @@ async def _stream_response(
         m.TOKENS_USED.labels(model=model, token_type="completion").inc(completion_tokens)
         m.COST_USD.labels(model=model).inc(cost_usd)
 
-        asyncio.create_task(
-            record_usage(
-                user_id=identity.user_id,
-                team_id=identity.team_id,
-                model=model,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                latency_ms=latency_ms,
-                request_id=request_id,
-                cost_usd=cost_usd,
-                cache_hit=False,  # streaming responses are not cached
-                was_rag_used=rag_used,
-                pii_entities_scrubbed=pii_count,
-                status="success",
+        if not identity.passthrough_key:
+            asyncio.create_task(
+                record_usage(
+                    user_id=identity.user_id,
+                    team_id=identity.team_id,
+                    model=model,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    latency_ms=latency_ms,
+                    request_id=request_id,
+                    cost_usd=cost_usd,
+                    cache_hit=False,  # streaming responses are not cached
+                    was_rag_used=rag_used,
+                    pii_entities_scrubbed=pii_count,
+                    status="success",
+                )
             )
-        )
 
 
 def _record_error(
@@ -366,7 +371,7 @@ def _record_error(
 
     m.REQUEST_COUNT.labels(model=model, status=status).inc()
 
-    if identity:
+    if identity and not identity.passthrough_key:
         latency_ms = int((time.monotonic() - start_time) * 1000)
         asyncio.create_task(
             record_usage(

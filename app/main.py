@@ -143,6 +143,7 @@ def create_app() -> FastAPI:
 
     # Routers
     from app.api.v1.chat import router as chat_router
+    from app.api.v1.embeddings import router as embeddings_router
     from app.api.v1.health import router as health_router
     from app.api.v1.messages import router as messages_router
     from app.api.v1.models import router as models_router
@@ -152,6 +153,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(chat_router, prefix="/v1")
+    app.include_router(embeddings_router, prefix="/v1")
     app.include_router(messages_router, prefix="/v1")
     app.include_router(models_router, prefix="/v1")
     app.include_router(admin_router, prefix="/internal")
