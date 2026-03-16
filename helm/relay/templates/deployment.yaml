@@ -115,6 +115,18 @@ spec:
                   name: {{ include "relay.secretName" . }}
                   key: LANGFUSE_HOST
                   optional: true
+            - name: CODE_REVIEW__GITHUB__TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "relay.secretName" . }}
+                  key: CODE_REVIEW__GITHUB__TOKEN
+                  optional: true
+            - name: CODE_REVIEW__GITLAB__TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "relay.secretName" . }}
+                  key: CODE_REVIEW__GITLAB__TOKEN
+                  optional: true
 
             # ── Database URL ─────────────────────────────────────────────────
             {{- if .Values.externalDatabase.url }}

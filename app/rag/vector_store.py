@@ -9,6 +9,7 @@ from app.config import Settings
 
 _client: chromadb.ClientAPI | None = None
 _collection: chromadb.Collection | None = None
+_sync_collection: chromadb.Collection | None = None
 
 
 @dataclass
@@ -36,6 +37,10 @@ def init_vector_store(settings: Settings) -> chromadb.Collection:
         name=settings.chroma_collection_name,
         metadata={"hnsw:space": "cosine"},
     )
+    global _sync_collection
+    _sync_collection = _client.get_or_create_collection(
+        name=f"{settings.chroma_collection_name}__sync",
+    )
     return _collection
 
 
@@ -43,6 +48,33 @@ def get_collection() -> chromadb.Collection:
     if _collection is None:
         raise RuntimeError("Vector store not initialized")
     return _collection
+
+
+def get_synced_sha(repo: str) -> str | None:
+    """Return the last successfully synced commit SHA for a repo, or None."""
+    if _sync_collection is None:
+        return None
+    result = _sync_collection.get(ids=[repo], include=["metadatas"])
+    if result["ids"]:
+        return result["metadatas"][0].get("sha")
+    return None
+
+
+def set_synced_sha(repo: str, sha: str) -> None:
+    """Persist the synced commit SHA for a repo."""
+    if _sync_collection is None:
+        return
+    _sync_collection.upsert(ids=[repo], documents=[sha], metadatas=[{"sha": sha}])
+
+
+def delete_by_source(source: str) -> int:
+    """Delete all chunks whose 'source' metadata matches. Returns deleted count."""
+    collection = get_collection()
+    existing = collection.get(where={"source": source}, include=[])
+    if not existing["ids"]:
+        return 0
+    collection.delete(ids=existing["ids"])
+    return len(existing["ids"])
 
 
 def upsert_documents(

@@ -61,6 +61,7 @@ data:
         {{- end }}
         {{- else }} []
         {{- end }}
+      allow_list: {{ toJson .Values.config.pii.allowList }}
 
     rate_limiting:
       enabled: {{ .Values.config.rateLimiting.enabled }}
@@ -105,3 +106,17 @@ data:
     analytics:
       enabled: {{ .Values.config.analytics.enabled }}
       provider: {{ .Values.config.analytics.provider | quote }}
+
+    code_review:
+      sync_on_startup: {{ .Values.config.codeReview.syncOnStartup }}
+      github:
+        include: {{ toJson .Values.config.codeReview.github.include }}
+        orgs: {{ toJson .Values.config.codeReview.github.orgs }}
+        exclude: {{ toJson .Values.config.codeReview.github.exclude }}
+        ref: {{ .Values.config.codeReview.github.ref | quote }}
+      gitlab:
+        host: {{ .Values.config.codeReview.gitlab.host | quote }}
+        include: {{ toJson .Values.config.codeReview.gitlab.include }}
+        groups: {{ toJson .Values.config.codeReview.gitlab.groups }}
+        exclude: {{ toJson .Values.config.codeReview.gitlab.exclude }}
+        ref: {{ .Values.config.codeReview.gitlab.ref | quote }}

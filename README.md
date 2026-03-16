@@ -79,6 +79,14 @@ Your existing code works without any other changes. Get your `gr-...` key by log
 
 ---
 
+## Request pipeline
+
+Every request passes through 9 stages in order:
+
+![Request pipeline](docs/pipeline.png)
+
+---
+
 ## Kubernetes (Helm)
 
 Requires Helm 3.x and a cluster with a default StorageClass. `PROXY_MASTER_KEY` is auto-generated on first install and
@@ -109,14 +117,6 @@ docker run --rm -p 8000:8000 \
 Services started by compose: `proxy` (port 8000), `postgres`, `prometheus` (port 9090).
 
 **Worker count** defaults to 4. Override with `-e WORKERS=8` or set `WORKERS=8` in `.env`.
-
----
-
-## Request pipeline
-
-Every request passes through 9 stages in order:
-
-![Request pipeline](docs/pipeline.png)
 
 ---
 

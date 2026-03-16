@@ -22,6 +22,7 @@ from app.metrics.prometheus import metrics_response
 from app.pii.restorer import init_restorer
 from app.pii.scrubber import init_scrubber
 from app.rag.embedder import init_embedder
+from app.rag.repo_discovery import auto_sync_repos
 from app.rag.retriever import init_retriever
 from app.rag.vector_store import init_vector_store
 
@@ -63,6 +64,14 @@ async def lifespan(app: FastAPI):
         init_vector_store(settings)
         init_retriever(settings)
         log.info("RAG pipeline ready")
+
+        # Auto-sync repos if credentials are configured and not offloaded to CronJob
+        if settings.sync_on_startup and (
+            settings.github_token or settings.github_include
+            or settings.gitlab_token or settings.gitlab_include
+        ):
+            log.info("Starting background repo sync...")
+            asyncio.create_task(auto_sync_repos(settings))
     else:
         init_retriever(settings)
 
