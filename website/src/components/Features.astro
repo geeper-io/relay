@@ -28,7 +28,15 @@ const features = [
     icon: "database",
     title: "RAG Integration",
     description:
-      "Automatic context injection from your ChromaDB knowledge base. Semantic search with configurable top-k and score thresholds.",
+      "Automatic context injection from your ChromaDB knowledge base. AST-aware code chunking for 15+ languages. Scope retrieval to a specific repo with X-Relay-Repo.",
+    badge: "Knowledge",
+    badgeColor: "emerald",
+  },
+  {
+    icon: "git-branch",
+    title: "Code Review",
+    description:
+      "Index GitHub and GitLab repositories incrementally. Send a diff — Relay injects relevant functions, types, and docs so the model reviews against your actual codebase.",
     badge: "Knowledge",
     badgeColor: "emerald",
   },
@@ -55,14 +63,6 @@ const features = [
       "Multi-team support with per-team API keys and rate limits. Google OAuth SSO creates keys automatically on first login.",
     badge: "Enterprise",
     badgeColor: "pink",
-  },
-  {
-    icon: "server",
-    title: "Kubernetes Native",
-    description:
-      "Production Helm chart with Bitnami PostgreSQL and Redis subcharts. Auto-generated master key, PVC management, HPA.",
-    badge: "Deployment",
-    badgeColor: "orange",
   },
 ];
 
@@ -151,6 +151,14 @@ const badgeStyles: Record<string, string> = {
                     <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
                     <line x1="6" y1="6" x2="6.01" y2="6"/>
                     <line x1="6" y1="18" x2="6.01" y2="18"/>
+                  </svg>
+                )}
+                {feature.icon === "git-branch" && (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="6" y1="3" x2="6" y2="15"/>
+                    <circle cx="18" cy="6" r="3"/>
+                    <circle cx="6" cy="18" r="3"/>
+                    <path d="M18 9a9 9 0 01-9 9"/>
                   </svg>
                 )}
               </div>

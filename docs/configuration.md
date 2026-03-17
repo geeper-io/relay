@@ -205,6 +205,15 @@ git diff | jq -Rs '{
      -d @- | jq -r '.choices[0].message.content'
 ```
 
+**How the pipeline handles a code review request:**
+
+1. **PII scrubbing** — messages containing `diff --git` or a unified hunk header (`@@ -N,N +N,N @@`) skip scrubbing
+   entirely; identifiers and class names in diffs produce too many false positives.
+2. **RAG** — the diff text is used as the retrieval query. If `X-Relay-Repo` is set, only chunks from that repo are
+   searched. The top-K most similar functions, classes, and docs are prepended to the request as context.
+3. **LLM call** — the model receives the diff plus the retrieved context and returns a review grounded in your actual
+   codebase rather than generic advice.
+
 ## Rate limiting
 
 ```yaml
