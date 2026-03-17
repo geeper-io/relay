@@ -48,6 +48,7 @@ async def sync_repo(body: RepoSyncRequest):
 @router.post("/kb/upload")
 async def upload_document(
     file: UploadFile,
+    _: None = Depends(require_admin),
     settings: Settings = Depends(get_settings),
 ):
     """Upload and immediately ingest a document or code file."""
@@ -89,13 +90,14 @@ async def kb_search(
     embedding = embed_one(q)
     where = {"repo": repo} if repo else None
     results = vector_store.query(query_embedding=embedding, n_results=n, where=where)
+    threshold = settings.rag_score_threshold
     return {
         "query": q,
-        "threshold": settings.rag_score_threshold,
+        "threshold": threshold,
         "results": [
             {
                 "distance": round(r.distance, 4),
-                "above_threshold": r.distance > settings.rag_score_threshold,
+                "above_threshold": r.distance > threshold,
                 "source": r.metadata.get("source"),
                 "symbol": r.metadata.get("symbol"),
                 "doc_type": r.metadata.get("doc_type"),

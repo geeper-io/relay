@@ -75,27 +75,19 @@ async def sync_ingestor(
                 doc = await ingestor.fetch_document(item_id)
                 source_key = f"{ingestor.source_id}/{item_id}"
 
-                with tempfile.NamedTemporaryFile(
-                    suffix=Path(doc.filename).suffix,
-                    mode="w", encoding="utf-8", delete=False,
-                ) as f:
-                    f.write(doc.content)
-                    tmp_path = Path(f.name)
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    dest = Path(tmpdir) / doc.filename.replace("/", "_")
+                    dest.write_text(doc.content, encoding="utf-8", errors="replace")
 
-                # Rename so ingest_file sees a recognisable filename for chunking
-                dest = tmp_path.parent / doc.filename.replace("/", "_")
-                tmp_path.rename(dest)
-
-                vector_store.delete_by_source(source_key)
-                chunks = ingest_file(
-                    dest,
-                    collection_filter={
-                        "source": source_key,
-                        "repo": ingestor.source_id,
-                        **doc.metadata,
-                    },
-                )
-                dest.unlink(missing_ok=True)
+                    vector_store.delete_by_source(source_key)
+                    chunks = ingest_file(
+                        dest,
+                        collection_filter={
+                            "source": source_key,
+                            "repo": ingestor.source_id,
+                            **doc.metadata,
+                        },
+                    )
 
                 total_chunks += chunks
                 log.debug("%s: ingested %s (%d chunks)", ingestor.source_id, item_id, chunks)
@@ -116,10 +108,15 @@ async def sync_ingestor(
 
     if not failed:
         set_synced_sha(ingestor.source_id, new_cursor)
+    elif len(failed) == len(to_index):
+        log.error(
+            "%s: ALL %d files failed — is the source accessible? Cursor not saved.",
+            ingestor.source_id, len(failed),
+        )
     else:
         log.warning(
-            "%s: %d files failed — cursor not saved, will retry on next sync",
-            ingestor.source_id, len(failed),
+            "%s: %d/%d files failed — cursor not saved, will retry on next sync",
+            ingestor.source_id, len(failed), len(to_index),
         )
 
     await ingestor.close()

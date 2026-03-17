@@ -2,19 +2,16 @@
 from __future__ import annotations
 
 import logging
-import time
 import urllib.parse
 from pathlib import Path
 
 import httpx
 
 from app.rag.ingestion import SUPPORTED_EXTENSIONS
+from app.rag.ingestors._http import get_with_retry
 from app.rag.ingestors.base import Document, Ingestor
 
 log = logging.getLogger(__name__)
-
-_ERROR_RETRIES = 3
-_MAX_RATE_LIMIT_WAIT = 3700
 
 _SKIP_PATTERNS = {
     "node_modules", "vendor", "dist", "build", ".git",
@@ -27,36 +24,6 @@ def _should_skip(path: str) -> bool:
         if part in _SKIP_PATTERNS or part.startswith("."):
             return True
     return False
-
-
-async def _get(client: httpx.AsyncClient, url: str, **kwargs) -> httpx.Response:
-    """GET with rate-limit back-off and server-error retries."""
-    error_attempts = 0
-    rate_limit_attempts = 0
-    while True:
-        r = await client.get(url, **kwargs)
-
-        if r.status_code not in (403, 429) and r.status_code < 500:
-            r.raise_for_status()
-            return r
-
-        if r.status_code in (403, 429):
-            reset_ts = r.headers.get("RateLimit-Reset") or r.headers.get("X-RateLimit-Reset")
-            wait = max(1, int(reset_ts) - int(time.time()) + 1) if reset_ts else 60 * (2 ** min(rate_limit_attempts, 4))
-            if wait > _MAX_RATE_LIMIT_WAIT:
-                r.raise_for_status()
-            rate_limit_attempts += 1
-            log.warning("GitLab rate limited — retrying in %ds (attempt %d)", wait, rate_limit_attempts)
-            import asyncio
-            await asyncio.sleep(wait)
-        else:
-            error_attempts += 1
-            if error_attempts >= _ERROR_RETRIES:
-                r.raise_for_status()
-            wait = 2 ** error_attempts * 5
-            log.warning("GitLab server error %d — retrying in %ds", r.status_code, wait)
-            import asyncio
-            await asyncio.sleep(wait)
 
 
 class GitLabIngestor(Ingestor):
@@ -86,7 +53,7 @@ class GitLabIngestor(Ingestor):
 
     async def get_cursor(self) -> str:
         if self._cursor is None:
-            r = await _get(
+            r = await get_with_retry(
                 self._http(),
                 f"{self._host}/api/v4/projects/{self._project_id}/repository/commits",
                 params={"ref_name": self._ref, "per_page": 1},
@@ -101,12 +68,15 @@ class GitLabIngestor(Ingestor):
             # Full sync: paginate tree
             paths, page = [], 1
             while True:
-                r = await _get(
+                r = await get_with_retry(
                     client,
                     f"{self._host}/api/v4/projects/{self._project_id}/repository/tree",
                     params={"ref": self._ref, "recursive": True, "per_page": 100, "page": page},
                 )
-                items = r.json()
+                try:
+                    items = r.json()
+                except Exception as e:
+                    raise RuntimeError(f"GitLab tree API returned non-JSON response (page {page}): {e}") from e
                 if not items:
                     break
                 for item in items:
@@ -121,7 +91,7 @@ class GitLabIngestor(Ingestor):
 
         # Incremental: compare cursors
         new_sha = await self.get_cursor()
-        r = await _get(
+        r = await get_with_retry(
             client,
             f"{self._host}/api/v4/projects/{self._project_id}/repository/compare",
             params={"from": since, "to": new_sha},
@@ -141,7 +111,7 @@ class GitLabIngestor(Ingestor):
 
     async def fetch_document(self, item_id: str) -> Document:
         encoded = urllib.parse.quote(item_id, safe="")
-        r = await _get(
+        r = await get_with_retry(
             self._http(),
             f"{self._host}/api/v4/projects/{self._project_id}/repository/files/{encoded}/raw",
             params={"ref": self._ref},

@@ -24,7 +24,7 @@ async def main() -> None:
     logging.basicConfig(level=settings.log_level.upper(), stream=sys.stdout)
 
     if not settings.github_token and not settings.gitlab_token:
-        log.info("No repo credentials configured, nothing to sync")
+        log.warning("No repo credentials configured, nothing to sync")
         return
 
     init_embedder(settings)

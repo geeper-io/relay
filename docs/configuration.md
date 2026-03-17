@@ -56,6 +56,10 @@ pii:
     - LOCATION
     - NRP
     - MEDICAL_LICENSE
+  allow_list:            # exact strings that are never scrubbed (case-insensitive)
+    - Settings           # e.g. class names that Presidio mis-detects as person names
+    - Config
+    - Manager
 ```
 
 Custom regex patterns (employee IDs, internal project codes, etc.) are defined in `app/pii/regex_patterns.py`. Add a
@@ -65,44 +69,140 @@ PII is replaced with typed placeholders (`<<PII_EMAIL_ADDRESS_a3f2b1>>`) before 
 Placeholders are swapped back in the response. The same original value always maps to the same placeholder within a
 request, so the LLM can still reason about relationships between entities.
 
+Git diffs (`diff --git …` or unified hunk headers `@@ -N,N +N,N @@`) are passed through without scrubbing — variable
+names, class names, and identifiers in code produce too many false positives.
+
 ## RAG / knowledge base
 
 ```yaml
 rag:
   enabled: true
-  top_k: 5               # chunks returned per query
-  score_threshold: 0.4   # cosine distance threshold — lower = more similar
-  embedding_model: "all-MiniLM-L6-v2"  # local, no API key needed
+  top_k: 5                          # chunks returned per query
+  score_threshold: 0.75             # cosine distance; 0 = identical, 1 = orthogonal
+                                    # 0.75 is tuned for all-MiniLM-L6-v2 on mixed code + doc corpora
+  embedding_model: "all-MiniLM-L6-v2"   # runs locally, no API key needed
 ```
 
-**Ingesting documents:**
+Supported file formats: `.txt`, `.md`, `.rst` (word-based chunking) and `.py`, `.js`, `.ts`, `.go`, `.rb`, `.java`,
+`.rs`, `.c`, `.cpp`, `.cs`, `.php`, `.swift`, `.kt`, `.scala`, `.sh` (AST-aware chunking via tree-sitter — each
+top-level function and class becomes its own chunk).
+
+**Uploading individual files (requires admin key):**
 
 ```bash
-# Ingest everything in knowledge_base/
-python scripts/ingest_kb.py
-
-# Ingest a specific file
-python scripts/ingest_kb.py path/to/document.md
-```
-
-Supported formats: `.txt`, `.md`, `.rst`. Drop files into `knowledge_base/` and re-run the script. Chunks are stored in
-ChromaDB at `./chroma_data` (configurable via `CHROMA_PERSIST_DIR`).
-
-You can also ingest via the API (requires admin key):
-
-```bash
-# Upload a file
 curl -X POST http://localhost:8000/internal/kb/upload \
   -H "Authorization: Bearer $MASTER_KEY" \
   -F "file=@docs/handbook.md"
+# → {"filename": "handbook.md", "chunks_ingested": 14}
+```
 
-# Ingest a server-side directory
-curl -X POST "http://localhost:8000/internal/kb/ingest-directory?directory=knowledge_base" \
-  -H "Authorization: Bearer $MASTER_KEY"
+**Scoping queries to a repository:**
 
-# Check stats
-curl http://localhost:8000/internal/kb/stats \
+Pass `X-Relay-Repo: owner/repo` in any chat request to restrict RAG retrieval to chunks from that repo only:
+
+```bash
+curl http://localhost:8000/v1/chat/completions \
+  -H "Authorization: Bearer gr-..." \
+  -H "X-Relay-Repo: myorg/backend" \
+  -d '{"model": "gpt-4o", "messages": [{"role":"user","content":"How does auth work?"}]}'
+```
+
+**Debugging retrieval:**
+
+```bash
+# Raw vector search — shows distances and whether each chunk passes the threshold
+curl "http://localhost:8000/internal/kb/search?q=authentication+middleware&repo=myorg/backend" \
   -H "Authorization: Bearer $MASTER_KEY"
+```
+
+## Code review / repo sync
+
+Relay can index entire GitHub or GitLab repositories and keep them up to date incrementally. Each sync:
+
+1. Fetches the HEAD commit SHA — skips everything if it matches the stored cursor.
+2. On first run: full tree index.
+3. On subsequent runs: only changed, added, and removed files (via the compare API).
+4. Saves the cursor only when all files succeed — partial syncs retry from the same point.
+
+```yaml
+code_review:
+  sync_on_startup: true   # set false when using the sync CronJob
+
+  github:
+    token: ""             # PAT with `repo` (read) scope; omit for public repos
+    ref: main
+    include:              # explicit allowlist — only these repos are indexed
+      - myorg/backend
+      - myorg/frontend
+    orgs:                 # auto-discover all repos in these orgs (ignored if include is set)
+      - myorg
+    exclude:              # blacklist applied after include/discovery
+      - myorg/archived-monolith
+
+  gitlab:
+    token: ""             # PAT with `read_repository` scope
+    host: https://gitlab.com
+    ref: main
+    include:              # numeric project IDs or URL-encoded paths
+      - "123"
+      - "mygroup%2Fbackend"
+    groups:               # auto-discover all projects in these groups
+      - mygroup
+```
+
+Environment variables:
+
+```env
+CODE_REVIEW__GITHUB__TOKEN=ghp_...
+CODE_REVIEW__GITLAB__TOKEN=glpat-...
+```
+
+**Manual sync / force re-index via API:**
+
+```bash
+# Incremental sync (skips if already up-to-date)
+curl -X POST http://localhost:8000/internal/kb/sync-repo \
+  -H "Authorization: Bearer $MASTER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"provider": "github", "repo": "myorg/backend", "token": "ghp_...", "ref": "main"}'
+
+# Force full re-index (ignores stored SHA)
+curl -X POST http://localhost:8000/internal/kb/sync-repo \
+  -H "Authorization: Bearer $MASTER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"provider": "github", "repo": "myorg/backend", "token": "ghp_...", "force": true}'
+```
+
+Sync runs in the background and returns immediately. Check `/internal/kb/stats` for chunk count.
+
+**Kubernetes CronJob:**
+
+The Helm chart includes an optional sync worker that runs independently of the proxy pod:
+
+```yaml
+# values.yaml
+syncJob:
+  enabled: true
+  schedule: "0 * * * *"   # hourly
+```
+
+Set `code_review.sync_on_startup: false` to prevent the proxy pods from also syncing on boot.
+
+**Code review workflow:**
+
+```bash
+# Review uncommitted changes against the indexed codebase
+git diff | jq -Rs '{
+  model: "gpt-4o",
+  messages: [{
+    role: "user",
+    content: ("Review this diff against our codebase conventions:\n\n" + .)
+  }]
+}' | curl -s http://localhost:8000/v1/chat/completions \
+     -H "Authorization: Bearer gr-..." \
+     -H "Content-Type: application/json" \
+     -H "X-Relay-Repo: myorg/backend" \
+     -d @- | jq -r '.choices[0].message.content'
 ```
 
 ## Rate limiting

@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     # RAG
     rag__enabled: bool = True
     rag__top_k: int = 5
-    rag__score_threshold: float = 0.75
+    rag__score_threshold: float = 0.75  # cosine distance; 0=identical, 1=orthogonal. 0.75 tuned for all-MiniLM-L6-v2 on mixed code+doc corpora
     rag__embedding_model: str = "all-MiniLM-L6-v2"
     rag__context_prefix: str = "Relevant internal documentation:\n\n"
     rag__context_separator: str = "\n\n---\n\n"

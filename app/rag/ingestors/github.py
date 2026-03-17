@@ -2,19 +2,19 @@
 from __future__ import annotations
 
 import base64
-import time
 import logging
 from pathlib import Path
 
 import httpx
 
 from app.rag.ingestion import SUPPORTED_EXTENSIONS
+from app.rag.ingestors._http import get_with_retry
 from app.rag.ingestors.base import Document, Ingestor
 
 log = logging.getLogger(__name__)
 
-_ERROR_RETRIES = 3
-_MAX_RATE_LIMIT_WAIT = 3700
+_UNAUTHENTICATED_CONCURRENCY = 1   # 60 req/hour public limit — no benefit to parallelism
+_AUTHENTICATED_CONCURRENCY = 5
 
 _SKIP_PATTERNS = {
     "node_modules", "vendor", "dist", "build", ".git",
@@ -27,36 +27,6 @@ def _should_skip(path: str) -> bool:
         if part in _SKIP_PATTERNS or part.startswith("."):
             return True
     return False
-
-
-async def _get(client: httpx.AsyncClient, url: str, **kwargs) -> httpx.Response:
-    """GET with rate-limit back-off and server-error retries."""
-    error_attempts = 0
-    rate_limit_attempts = 0
-    while True:
-        r = await client.get(url, **kwargs)
-
-        if r.status_code not in (403, 429) and r.status_code < 500:
-            r.raise_for_status()
-            return r
-
-        if r.status_code in (403, 429):
-            reset_ts = r.headers.get("X-RateLimit-Reset") or r.headers.get("RateLimit-Reset")
-            wait = max(1, int(reset_ts) - int(time.time()) + 1) if reset_ts else 60 * (2 ** min(rate_limit_attempts, 4))
-            if wait > _MAX_RATE_LIMIT_WAIT:
-                r.raise_for_status()
-            rate_limit_attempts += 1
-            log.warning("GitHub rate limited — retrying in %ds (attempt %d)", wait, rate_limit_attempts)
-            import asyncio
-            await asyncio.sleep(wait)
-        else:
-            error_attempts += 1
-            if error_attempts >= _ERROR_RETRIES:
-                r.raise_for_status()
-            wait = 2 ** error_attempts * 5
-            log.warning("GitHub server error %d — retrying in %ds", r.status_code, wait)
-            import asyncio
-            await asyncio.sleep(wait)
 
 
 class GitHubIngestor(Ingestor):
@@ -82,7 +52,7 @@ class GitHubIngestor(Ingestor):
 
     async def get_cursor(self) -> str:
         if self._cursor is None:
-            r = await _get(self._http(), f"https://api.github.com/repos/{self._repo}/commits/{self._ref}")
+            r = await get_with_retry(self._http(), f"https://api.github.com/repos/{self._repo}/commits/{self._ref}")
             self._cursor = r.json()["sha"]
         return self._cursor
 
@@ -92,7 +62,7 @@ class GitHubIngestor(Ingestor):
 
         if since is None:
             # Full sync: list all indexable files
-            r = await _get(client, f"https://api.github.com/repos/{self._repo}/git/trees/{new_sha}?recursive=1")
+            r = await get_with_retry(client, f"https://api.github.com/repos/{self._repo}/git/trees/{new_sha}?recursive=1")
             paths = [
                 item["path"] for item in r.json().get("tree", [])
                 if item["type"] == "blob"
@@ -102,7 +72,7 @@ class GitHubIngestor(Ingestor):
             return paths, []
 
         # Incremental: diff between cursors
-        r = await _get(client, f"https://api.github.com/repos/{self._repo}/compare/{since}...{new_sha}")
+        r = await get_with_retry(client, f"https://api.github.com/repos/{self._repo}/compare/{since}...{new_sha}")
         to_index, to_delete = [], []
         for f in r.json().get("files", []):
             path = f["filename"]
@@ -117,7 +87,7 @@ class GitHubIngestor(Ingestor):
         return to_index, to_delete
 
     async def fetch_document(self, item_id: str) -> Document:
-        r = await _get(
+        r = await get_with_retry(
             self._http(),
             f"https://api.github.com/repos/{self._repo}/contents/{item_id}?ref={self._ref}",
         )
@@ -136,4 +106,4 @@ class GitHubIngestor(Ingestor):
     @property
     def concurrency(self) -> int:
         """Reduce concurrency for unauthenticated requests to stay within rate limits."""
-        return 1 if not self._token else 5
+        return _UNAUTHENTICATED_CONCURRENCY if not self._token else _AUTHENTICATED_CONCURRENCY
