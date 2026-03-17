@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -49,8 +48,10 @@ class Settings(BaseSettings):
     llm__default_model: str = "gpt-4o"
     llm__default_embedding_model: str = ""
     llm__allowed_models: list[str] = [
-        "gpt-4o", "gpt-4o-mini",
-        "claude-3-5-sonnet-20241022", "claude-haiku-4-5-20251001",
+        "gpt-4o",
+        "gpt-4o-mini",
+        "claude-3-5-sonnet-20241022",
+        "claude-haiku-4-5-20251001",
     ]
     llm__model_aliases: dict[str, str] = {}
     llm__per_model_max_tokens: dict[str, int] = {}
@@ -70,13 +71,14 @@ class Settings(BaseSettings):
     # RAG
     rag__enabled: bool = True
     rag__top_k: int = 5
-    rag__score_threshold: float = 0.75  # cosine distance; 0=identical, 1=orthogonal. 0.75 tuned for all-MiniLM-L6-v2 on mixed code+doc corpora
+    # cosine distance; 0=identical, 1=orthogonal. 0.75 tuned for all-MiniLM-L6-v2 on mixed code+doc corpora
+    rag__score_threshold: float = 0.75
     rag__embedding_model: str = "all-MiniLM-L6-v2"
     rag__context_prefix: str = "Relevant internal documentation:\n\n"
     rag__context_separator: str = "\n\n---\n\n"
     chroma_persist_dir: str = "./chroma_data"
     chroma_collection_name: str = "internal_kb"
-    chroma_host: str = ""        # if set, use HTTP client (multi-pod); otherwise use local PersistentClient
+    chroma_host: str = ""  # if set, use HTTP client (multi-pod); otherwise use local PersistentClient
     chroma_port: int = 8001
 
     # PII
@@ -84,8 +86,12 @@ class Settings(BaseSettings):
     pii__spacy_model: str = "en_core_web_sm"
     pii__score_threshold: float = 0.7
     pii__entities: list[str] = [
-        "PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER",
-        "CREDIT_CARD", "US_SSN", "IP_ADDRESS",
+        "PERSON",
+        "EMAIL_ADDRESS",
+        "PHONE_NUMBER",
+        "CREDIT_CARD",
+        "US_SSN",
+        "IP_ADDRESS",
     ]
     pii__allow_list: list[str] = []  # exact strings that should never be scrubbed (e.g. class names)
 
@@ -111,8 +117,8 @@ class Settings(BaseSettings):
 
     # Caching (litellm.Cache)
     cache__enabled: bool = False
-    cache__type: str = "local"       # "local" | "redis"
-    cache__ttl: int = 3600           # seconds
+    cache__type: str = "local"  # "local" | "redis"
+    cache__ttl: int = 3600  # seconds
     cache__redis_host: str = "localhost"
     cache__redis_port: int = 6379
 
@@ -131,15 +137,15 @@ class Settings(BaseSettings):
     # Code review — repo auto-sync
     # GitHub: set token to enable. orgs/exclude are optional filters.
     code_review__github__token: str = ""
-    code_review__github__include: list[str] = []   # whitelist: if set, only these repos. e.g. ["org/api", "org/core"]
-    code_review__github__orgs: list[str] = []      # discover all repos in these orgs (ignored when include is set)
-    code_review__github__exclude: list[str] = []   # blacklist on top of include/discovered
+    code_review__github__include: list[str] = []  # whitelist: if set, only these repos. e.g. ["org/api", "org/core"]
+    code_review__github__orgs: list[str] = []  # discover all repos in these orgs (ignored when include is set)
+    code_review__github__exclude: list[str] = []  # blacklist on top of include/discovered
     code_review__github__ref: str = "main"
     # GitLab: set token to enable.
     code_review__gitlab__token: str = ""
     code_review__gitlab__host: str = "https://gitlab.com"
-    code_review__gitlab__include: list[str] = []   # whitelist: project IDs or paths. e.g. ["123", "group/project"]
-    code_review__gitlab__groups: list[str] = []    # discover all projects in these groups (ignored when include is set)
+    code_review__gitlab__include: list[str] = []  # whitelist: project IDs or paths. e.g. ["123", "group/project"]
+    code_review__gitlab__groups: list[str] = []  # discover all projects in these groups (ignored when include is set)
     code_review__gitlab__exclude: list[str] = []
     code_review__gitlab__ref: str = "main"
     code_review__sync_on_startup: bool = True  # set False when using the sync CronJob
@@ -343,9 +349,7 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    yaml_data = _load_yaml(
-        os.environ.get("CONFIG_FILE", "config/config.yaml")
-    )
+    yaml_data = _load_yaml(os.environ.get("CONFIG_FILE", "config/config.yaml"))
     flat = _flatten_yaml(yaml_data)
     # Seed environment with YAML values (env vars still take priority)
     for k, v in flat.items():

@@ -1,4 +1,5 @@
 """Shared HTTP retry helper for ingestors."""
+
 from __future__ import annotations
 
 import asyncio
@@ -40,6 +41,13 @@ async def get_with_retry(client: httpx.AsyncClient, url: str, **kwargs) -> httpx
             error_attempts += 1
             if error_attempts >= _ERROR_RETRIES:
                 r.raise_for_status()
-            wait = 2 ** error_attempts * 5
-            log.warning("Server error %d from %s — retrying in %ds (attempt %d/%d)", r.status_code, url, wait, error_attempts, _ERROR_RETRIES)
+            wait = 2**error_attempts * 5
+            log.warning(
+                "Server error %d from %s — retrying in %ds (attempt %d/%d)",
+                r.status_code,
+                url,
+                wait,
+                error_attempts,
+                _ERROR_RETRIES,
+            )
             await asyncio.sleep(wait)

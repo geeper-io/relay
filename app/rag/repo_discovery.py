@@ -2,6 +2,7 @@
 Discover all repos a token has access to and kick off sync.
 Called automatically at startup when credentials are configured.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -17,6 +18,7 @@ log = logging.getLogger(__name__)
 
 
 # ── GitHub ─────────────────────────────────────────────────────────────────────
+
 
 async def _github_list_repos(
     client: httpx.AsyncClient,
@@ -46,6 +48,7 @@ async def _github_list_repos(
 
 
 # ── GitLab ─────────────────────────────────────────────────────────────────────
+
 
 async def _gitlab_list_projects(
     client: httpx.AsyncClient,
@@ -81,6 +84,7 @@ async def _gitlab_list_projects(
 
 
 # ── Auto-sync entry point ──────────────────────────────────────────────────────
+
 
 async def auto_sync_repos(settings) -> None:
     """

@@ -1,4 +1,5 @@
 """Restores PII placeholders in LLM responses back to original values."""
+
 from __future__ import annotations
 
 import re
@@ -10,9 +11,7 @@ class PIIRestorer:
     def restore(self, text: str, restoration_map: dict[str, str]) -> str:
         if not restoration_map:
             return text
-        return _PLACEHOLDER_RE.sub(
-            lambda m: restoration_map.get(m.group(0), m.group(0)), text
-        )
+        return _PLACEHOLDER_RE.sub(lambda m: restoration_map.get(m.group(0), m.group(0)), text)
 
     def restore_streaming(
         self,
@@ -43,7 +42,7 @@ class PIIRestorer:
                         yield self.restore(before, restoration_map)
                     # Restore the placeholder itself
                     yield restoration_map.get(match.group(0), match.group(0))
-                    buffer = buffer[match.end():]
+                    buffer = buffer[match.end() :]
                 else:
                     # Check if buffer ends with a partial placeholder
                     partial_match = False

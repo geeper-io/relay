@@ -1,4 +1,5 @@
 """Tests for app/rag/retriever.py — code block extraction, query building, retrieval."""
+
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -12,10 +13,10 @@ from app.rag.retriever import (
 )
 from app.rag.vector_store import QueryResult
 
-
 # ---------------------------------------------------------------------------
 # _extract_code_blocks
 # ---------------------------------------------------------------------------
+
 
 def test_extract_no_blocks():
     assert _extract_code_blocks("Plain text, no code here.") == []
@@ -66,6 +67,7 @@ def test_extract_no_filepath_when_no_comment():
 # _build_code_query
 # ---------------------------------------------------------------------------
 
+
 def test_build_code_query_includes_original():
     blocks = [{"filepath": "", "code": "x = 1"}]
     query = _build_code_query(blocks, "What does this do?")
@@ -106,6 +108,7 @@ def test_build_code_query_no_filepath_skipped():
 # RAGRetriever — settings fixture
 # ---------------------------------------------------------------------------
 
+
 class _FakeSettings:
     rag_top_k = 5
     rag_score_threshold = 0.75
@@ -130,7 +133,8 @@ def retriever():
 # ---------------------------------------------------------------------------
 # Empty query
 # ---------------------------------------------------------------------------
-и
+
+
 @pytest.mark.asyncio
 async def test_empty_query_returns_empty(retriever):
     ctx, n = await retriever.retrieve_context("")
@@ -148,6 +152,7 @@ async def test_whitespace_query_returns_empty(retriever):
 # ---------------------------------------------------------------------------
 # Single-signal retrieval (no code blocks)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_single_retrieval_below_threshold(retriever):
@@ -196,6 +201,7 @@ async def test_single_retrieval_mixed_threshold(retriever):
 # ---------------------------------------------------------------------------
 # Multi-signal retrieval (code blocks present)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_multi_signal_triggered_by_code_block(retriever):
@@ -262,25 +268,30 @@ async def test_multi_signal_all_above_threshold_returns_empty(retriever):
 # _format output structure
 # ---------------------------------------------------------------------------
 
+
 def test_format_includes_label_with_symbol(retriever):
-    results = [QueryResult(
-        doc_id="x",
-        text="body text",
-        metadata={"source": "src/x.py", "symbol": "MyClass", "title": "X", "doc_type": "code"},
-        distance=0.3,
-    )]
+    results = [
+        QueryResult(
+            doc_id="x",
+            text="body text",
+            metadata={"source": "src/x.py", "symbol": "MyClass", "title": "X", "doc_type": "code"},
+            distance=0.3,
+        )
+    ]
     formatted = retriever._format(results)
     assert "[X:MyClass]" in formatted
     assert "body text" in formatted
 
 
 def test_format_module_doc_uses_title_only(retriever):
-    results = [QueryResult(
-        doc_id="x",
-        text="module header",
-        metadata={"source": "src/x.py", "symbol": "__module__", "title": "X", "doc_type": "code"},
-        distance=0.2,
-    )]
+    results = [
+        QueryResult(
+            doc_id="x",
+            text="module header",
+            metadata={"source": "src/x.py", "symbol": "__module__", "title": "X", "doc_type": "code"},
+            distance=0.2,
+        )
+    ]
     formatted = retriever._format(results)
     assert "[X]" in formatted
     assert "__module__" not in formatted

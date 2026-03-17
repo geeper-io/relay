@@ -1,4 +1,5 @@
 """Knowledge base management endpoints."""
+
 from __future__ import annotations
 
 import asyncio
@@ -21,11 +22,11 @@ router = APIRouter(tags=["knowledge-base"], dependencies=[Depends(require_admin)
 
 class RepoSyncRequest(BaseModel):
     provider: Literal["github", "gitlab"]
-    repo: str               # GitHub: "owner/name" | GitLab: numeric project ID or "namespace%2Fproject"
-    token: str = ""         # PAT with read access; optional for public repos
+    repo: str  # GitHub: "owner/name" | GitLab: numeric project ID or "namespace%2Fproject"
+    token: str = ""  # PAT with read access; optional for public repos
     ref: str = "main"
-    host: str = "https://gitlab.com"   # GitLab only; ignored for GitHub
-    force: bool = False     # ignore stored SHA and re-index from scratch
+    host: str = "https://gitlab.com"  # GitLab only; ignored for GitHub
+    force: bool = False  # ignore stored SHA and re-index from scratch
 
 
 @router.post("/kb/sync-repo")
@@ -87,6 +88,7 @@ async def kb_search(
 ):
     """Debug: run a raw vector search and return chunks with scores."""
     from app.rag.embedder import embed_one
+
     embedding = embed_one(q)
     where = {"repo": repo} if repo else None
     results = vector_store.query(query_embedding=embedding, n_results=n, where=where)
@@ -119,6 +121,7 @@ async def reset_kb(settings: Settings = Depends(get_settings)):
     """Delete all documents from the knowledge base."""
     import chromadb
     from chromadb.config import Settings as ChromaSettings
+
     client = chromadb.PersistentClient(
         path=settings.chroma_persist_dir,
         settings=ChromaSettings(anonymized_telemetry=False),

@@ -1,16 +1,21 @@
 """Tests for PII scrubbing. Requires presidio + spacy en_core_web_lg."""
+
 import pytest
 
-from app.pii.scrubber import PIIScrubber
 from app.pii.restorer import PIIRestorer
+from app.pii.scrubber import PIIScrubber
 
 
 class _FakeSettings:
     pii_enabled = True
     pii_score_threshold = 0.5
     pii_entities = [
-        "PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER",
-        "CREDIT_CARD", "US_SSN", "IP_ADDRESS",
+        "PERSON",
+        "EMAIL_ADDRESS",
+        "PHONE_NUMBER",
+        "CREDIT_CARD",
+        "US_SSN",
+        "IP_ADDRESS",
         "EMPLOYEE_ID",  # custom regex recognizer
     ]
     pii_allow_list = []
@@ -36,6 +41,7 @@ def test_email_scrubbed(scrubber, restorer):
     # Restore
     restored = restorer.restore(scrubbed[0]["content"], rmap)
     assert "john@example.com" in restored
+
 
 def test_name_scrubbed(scrubber, restorer):
     messages = [{"role": "user", "content": "Contact John Doe for details."}]
@@ -150,6 +156,7 @@ def test_python_decorator_not_treated_as_diff(scrubber):
 
 def test_allow_list_case_insensitive(scrubber, restorer):
     """Terms in pii_allow_list (case-insensitive) should NOT be redacted."""
+
     class AllowListSettings(_FakeSettings):
         pii_allow_list = ["Settings"]  # stored mixed-case, should still match lowercase
 
@@ -162,6 +169,7 @@ def test_allow_list_case_insensitive(scrubber, restorer):
 
 def test_allow_list_lowercase_entry_matches_uppercase_text(scrubber):
     """Allow list entry 'settings' should protect 'Settings' in text."""
+
     class LowerAllowSettings(_FakeSettings):
         pii_allow_list = ["settings"]
 
@@ -180,6 +188,7 @@ def test_same_value_gets_same_placeholder(scrubber):
     content = scrubbed[0]["content"]
     # Extract all placeholders that replaced the email
     import re
+
     placeholders = re.findall(r"<<PII_EMAIL_ADDRESS_[a-f0-9]{8}>>", content)
     assert len(placeholders) >= 1
     # All occurrences must be the same placeholder

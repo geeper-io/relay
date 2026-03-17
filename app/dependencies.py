@@ -1,5 +1,6 @@
 """FastAPI dependency wrappers for singleton services."""
-from app.config import Settings, get_settings
+
+from app.config import get_settings
 from app.core.content_policy import get_content_policy
 from app.core.rate_limiter import get_rate_limiter
 from app.llm.client import get_llm_client

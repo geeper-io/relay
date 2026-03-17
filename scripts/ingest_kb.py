@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """CLI script to ingest documents into the knowledge base."""
+
 import sys
 from pathlib import Path
 

@@ -1,4 +1,5 @@
 """GitHub repository ingestor."""
+
 from __future__ import annotations
 
 import base64
@@ -13,12 +14,19 @@ from app.rag.ingestors.base import Document, Ingestor
 
 log = logging.getLogger(__name__)
 
-_UNAUTHENTICATED_CONCURRENCY = 1   # 60 req/hour public limit — no benefit to parallelism
+_UNAUTHENTICATED_CONCURRENCY = 1  # 60 req/hour public limit — no benefit to parallelism
 _AUTHENTICATED_CONCURRENCY = 5
 
 _SKIP_PATTERNS = {
-    "node_modules", "vendor", "dist", "build", ".git",
-    "__pycache__", ".venv", "venv", "target",
+    "node_modules",
+    "vendor",
+    "dist",
+    "build",
+    ".git",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "target",
 }
 
 
@@ -62,9 +70,12 @@ class GitHubIngestor(Ingestor):
 
         if since is None:
             # Full sync: list all indexable files
-            r = await get_with_retry(client, f"https://api.github.com/repos/{self._repo}/git/trees/{new_sha}?recursive=1")
+            r = await get_with_retry(
+                client, f"https://api.github.com/repos/{self._repo}/git/trees/{new_sha}?recursive=1"
+            )
             paths = [
-                item["path"] for item in r.json().get("tree", [])
+                item["path"]
+                for item in r.json().get("tree", [])
                 if item["type"] == "blob"
                 and Path(item["path"]).suffix.lower() in SUPPORTED_EXTENSIONS
                 and not _should_skip(item["path"])

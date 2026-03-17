@@ -53,8 +53,7 @@ class LLMClient:
                 if a.split("/", 1)[-1] == resolved or a.split("/", 1)[-1] == model:
                     return a
             raise ModelNotAllowedError(
-                f"Model '{model}' is not available. "
-                f"Allowed: {', '.join(a.split('/', 1)[-1] for a in allowed)}"
+                f"Model '{model}' is not available. Allowed: {', '.join(a.split('/', 1)[-1] for a in allowed)}"
             )
         return resolved
 

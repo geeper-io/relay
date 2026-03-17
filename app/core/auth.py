@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from functools import lru_cache
 
 from cachetools import TTLCache
 from fastapi import Depends, Request
@@ -85,6 +84,7 @@ async def resolve_identity(
     _cache[key_hash] = identity
 
     import asyncio
+
     asyncio.create_task(update_key_last_used(api_key.id))
 
     return identity
@@ -92,10 +92,12 @@ async def resolve_identity(
 
 def require_scope(scope: str):
     """Dependency factory — ensures identity has a given scope."""
+
     async def check(identity: ResolvedIdentity = Depends(resolve_identity)) -> ResolvedIdentity:
         if scope not in identity.scopes:
             raise AuthorizationError(f"Scope '{scope}' required")
         return identity
+
     return check
 
 

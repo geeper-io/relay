@@ -4,7 +4,7 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 
-from app.config import Settings, get_settings
+from app.config import Settings
 from app.core.exceptions import RateLimitError
 
 
@@ -57,9 +57,7 @@ class RateLimiter:
 
     def _get_team_bucket(self, team_id: str, tpm: int) -> TokenBucket:
         if team_id not in self._team_tpm_buckets:
-            self._team_tpm_buckets[team_id] = TokenBucket(
-                capacity=tpm, refill_rate=tpm / 60.0
-            )
+            self._team_tpm_buckets[team_id] = TokenBucket(capacity=tpm, refill_rate=tpm / 60.0)
         return self._team_tpm_buckets[team_id]
 
     async def check_and_consume(

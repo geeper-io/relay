@@ -4,6 +4,7 @@ Generic ingestor sync engine.
 Handles cursor tracking, concurrency, delete-before-reingest, and SHA persistence.
 Ingestors only need to implement list_changes() and fetch_document().
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -51,7 +52,11 @@ async def sync_ingestor(
     if old_cursor:
         log.info(
             "%s: %d to index, %d to delete (%s → %s)",
-            ingestor.source_id, len(to_index), len(to_delete), old_cursor[:12], new_cursor[:12],
+            ingestor.source_id,
+            len(to_index),
+            len(to_delete),
+            old_cursor[:12],
+            new_cursor[:12],
         )
     else:
         log.info("%s: first sync @ %s — %d files", ingestor.source_id, new_cursor[:12], len(to_index))
@@ -111,12 +116,15 @@ async def sync_ingestor(
     elif len(failed) == len(to_index):
         log.error(
             "%s: ALL %d files failed — is the source accessible? Cursor not saved.",
-            ingestor.source_id, len(failed),
+            ingestor.source_id,
+            len(failed),
         )
     else:
         log.warning(
             "%s: %d/%d files failed — cursor not saved, will retry on next sync",
-            ingestor.source_id, len(failed), len(to_index),
+            ingestor.source_id,
+            len(failed),
+            len(to_index),
         )
 
     await ingestor.close()

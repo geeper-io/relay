@@ -1,4 +1,5 @@
 """GitLab repository ingestor."""
+
 from __future__ import annotations
 
 import logging
@@ -14,8 +15,15 @@ from app.rag.ingestors.base import Document, Ingestor
 log = logging.getLogger(__name__)
 
 _SKIP_PATTERNS = {
-    "node_modules", "vendor", "dist", "build", ".git",
-    "__pycache__", ".venv", "venv", "target",
+    "node_modules",
+    "vendor",
+    "dist",
+    "build",
+    ".git",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "target",
 }
 
 

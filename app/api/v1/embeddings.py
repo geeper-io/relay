@@ -1,8 +1,8 @@
 """OpenAI-compatible /v1/embeddings endpoint."""
+
 from __future__ import annotations
 
 import time
-import uuid
 
 import litellm
 from fastapi import APIRouter, Depends, Request
@@ -25,11 +25,13 @@ async def embeddings(
     model = request_body.get("model") or settings.default_embedding_model
     if not model:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=400, detail="model is required")
 
     input_ = request_body.get("input")
     if input_ is None:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=400, detail="input is required")
 
     start_time = time.monotonic()
@@ -42,9 +44,7 @@ async def embeddings(
         response = await litellm.aembedding(**call_kwargs)
 
         m.REQUEST_COUNT.labels(model=model, status="success").inc()
-        m.REQUEST_LATENCY.labels(model=model, stream="false").observe(
-            time.monotonic() - start_time
-        )
+        m.REQUEST_LATENCY.labels(model=model, stream="false").observe(time.monotonic() - start_time)
         prompt_tokens = getattr(getattr(response, "usage", None), "prompt_tokens", 0) or 0
         m.TOKENS_USED.labels(model=model, token_type="prompt").inc(prompt_tokens)
 

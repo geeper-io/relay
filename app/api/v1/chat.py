@@ -1,4 +1,5 @@
 """OpenAI-compatible /v1/chat/completions endpoint."""
+
 from __future__ import annotations
 
 import asyncio
@@ -9,6 +10,8 @@ from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
+
+from app.analytics.langfuse import build_trace_metadata
 from app.config import Settings, get_settings
 from app.core.auth import ResolvedIdentity, resolve_identity
 from app.core.content_policy import ContentPolicy, get_content_policy
@@ -20,8 +23,7 @@ from app.metrics import prometheus as m
 from app.pii.restorer import PIIRestorer, get_restorer
 from app.pii.scrubber import PIIScrubber, get_scrubber
 from app.rag.retriever import RAGRetriever, get_retriever
-from app.analytics.langfuse import build_trace_metadata
-from app.schemas.openai import ChatCompletionRequest, ChatCompletionResponse
+from app.schemas.openai import ChatCompletionRequest
 
 router = APIRouter(tags=["chat"])
 
@@ -174,9 +176,7 @@ async def chat_completions(
         if response.choices:
             for choice in response.choices:
                 if choice.message and choice.message.content:
-                    choice.message.content = restorer.restore(
-                        choice.message.content, restoration_map
-                    )
+                    choice.message.content = restorer.restore(choice.message.content, restoration_map)
 
         # 9. Record metrics + usage
         latency_ms = int((time.monotonic() - start_time) * 1000)
@@ -184,14 +184,10 @@ async def chat_completions(
         prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
         completion_tokens = getattr(usage, "completion_tokens", 0) or 0
         cost_usd = llm_client.estimate_cost(model, prompt_tokens, completion_tokens)
-        cache_hit = bool(
-            getattr(getattr(response, "_hidden_params", None), "cache_hit", False)
-        )
+        cache_hit = bool(getattr(getattr(response, "_hidden_params", None), "cache_hit", False))
 
         m.REQUEST_COUNT.labels(model=model, status="success").inc()
-        m.REQUEST_LATENCY.labels(model=model, stream="false").observe(
-            time.monotonic() - start_time
-        )
+        m.REQUEST_LATENCY.labels(model=model, stream="false").observe(time.monotonic() - start_time)
         m.TOKENS_USED.labels(model=model, token_type="prompt").inc(prompt_tokens)
         m.TOKENS_USED.labels(model=model, token_type="completion").inc(completion_tokens)
         m.COST_USD.labels(model=model).inc(cost_usd)
@@ -224,6 +220,7 @@ async def chat_completions(
     except ProxyError as exc:
         _record_error(exc, model, identity, request_id, start_time, pii_count=0)
         from app.core.exceptions import RateLimitError
+
         headers = {"Retry-After": str(exc.retry_after)} if isinstance(exc, RateLimitError) else {}
         return JSONResponse(
             status_code=exc.status_code,
@@ -256,13 +253,19 @@ async def _stream_response(
     tool_calls: dict[int, dict] = {}  # index -> {id, name, arguments}
 
     def _sse(chunk_id, created, delta, finish_reason=None):
-        return "data: " + json.dumps({
-            "id": chunk_id,
-            "object": "chat.completion.chunk",
-            "created": created,
-            "model": model,
-            "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
-        }) + "\n\n"
+        return (
+            "data: "
+            + json.dumps(
+                {
+                    "id": chunk_id,
+                    "object": "chat.completion.chunk",
+                    "created": created,
+                    "model": model,
+                    "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
+                }
+            )
+            + "\n\n"
+        )
 
     try:
         async for chunk in llm_client.stream(
@@ -329,9 +332,7 @@ async def _stream_response(
         cost_usd = llm_client.estimate_cost(model, prompt_tokens, completion_tokens)
 
         m.REQUEST_COUNT.labels(model=model, status="success").inc()
-        m.REQUEST_LATENCY.labels(model=model, stream="true").observe(
-            time.monotonic() - start_time
-        )
+        m.REQUEST_LATENCY.labels(model=model, stream="true").observe(time.monotonic() - start_time)
         m.TOKENS_USED.labels(model=model, token_type="prompt").inc(prompt_tokens)
         m.TOKENS_USED.labels(model=model, token_type="completion").inc(completion_tokens)
         m.COST_USD.labels(model=model).inc(cost_usd)

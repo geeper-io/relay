@@ -1,4 +1,5 @@
 """Prometheus metrics definitions."""
+
 from __future__ import annotations
 
 from prometheus_client import Counter, Gauge, Histogram
@@ -98,4 +99,5 @@ def metrics_response():
     """Returns a FastAPI Response with the current Prometheus metrics."""
     from fastapi.responses import Response
     from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)

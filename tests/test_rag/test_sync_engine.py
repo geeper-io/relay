@@ -1,4 +1,5 @@
 """Tests for app/rag/sync_engine.py — cursor tracking, ingest, failure handling."""
+
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -8,10 +9,10 @@ import pytest
 from app.rag.ingestors.base import Document, Ingestor
 from app.rag.sync_engine import sync_ingestor
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 class _FakeIngestor(Ingestor):
     """Minimal concrete ingestor for testing."""
@@ -59,12 +60,13 @@ class _FakeIngestor(Ingestor):
 _GET_SHA = "app.rag.sync_engine.get_synced_sha"
 _SET_SHA = "app.rag.sync_engine.set_synced_sha"
 _DEL_SRC = "app.rag.sync_engine.vector_store.delete_by_source"
-_INGEST  = "app.rag.sync_engine.ingest_file"
+_INGEST = "app.rag.sync_engine.ingest_file"
 
 
 # ---------------------------------------------------------------------------
 # Skip when already up-to-date
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_skip_when_cursor_matches():
@@ -93,6 +95,7 @@ async def test_skip_does_not_call_close():
 # ---------------------------------------------------------------------------
 # Full sync (no stored cursor)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_full_sync_indexes_all_files():
@@ -134,6 +137,7 @@ async def test_full_sync_saves_cursor_on_success():
 # Incremental sync
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_incremental_sync_deletes_and_indexes():
     ingestor = _FakeIngestor(
@@ -159,6 +163,7 @@ async def test_incremental_sync_deletes_and_indexes():
 # ---------------------------------------------------------------------------
 # Partial failure — cursor NOT saved
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_partial_failure_cursor_not_saved():
@@ -205,6 +210,7 @@ async def test_all_failed_cursor_not_saved():
 # force=True ignores stored cursor
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_force_ignores_stored_cursor():
     ingestor = _FakeIngestor(cursor="sha_current", to_index=["file.md"])
@@ -226,6 +232,7 @@ async def test_force_ignores_stored_cursor():
 # Empty to_index (nothing to do except save cursor)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_no_changes_saves_cursor():
     ingestor = _FakeIngestor(cursor="sha2", to_index=[], to_delete=[])
@@ -245,6 +252,7 @@ async def test_no_changes_saves_cursor():
 # ---------------------------------------------------------------------------
 # concurrency override
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_concurrency_override():

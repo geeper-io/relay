@@ -5,6 +5,7 @@ Used by the Helm CronJob so proxy pods are never burdened with sync work.
 Usage:
     python -m app.sync_worker
 """
+
 from __future__ import annotations
 
 import asyncio

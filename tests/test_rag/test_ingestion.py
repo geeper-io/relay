@@ -1,9 +1,10 @@
 """Tests for app/rag/ingestion.py — chunking pipeline."""
+
 from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -15,10 +16,10 @@ from app.rag.ingestion import (
     ingest_file,
 )
 
-
 # ---------------------------------------------------------------------------
 # _chunk_text
 # ---------------------------------------------------------------------------
+
 
 def test_chunk_text_basic():
     words = ["word"] * 20
@@ -79,6 +80,7 @@ class Calculator:
 def _tree_sitter_works() -> bool:
     try:
         from tree_sitter_languages import get_parser
+
         get_parser("python")
         return True
     except Exception:
@@ -121,6 +123,7 @@ def test_chunk_code_python_module_doc_first_line():
 # _chunk_code — fallback path (unknown extension)
 # ---------------------------------------------------------------------------
 
+
 def test_chunk_code_unknown_extension_falls_back():
     content = " ".join(["token"] * 30)
     chunks = _chunk_code(content, "file.xyz")
@@ -137,6 +140,7 @@ def test_chunk_code_empty_content_fallback():
 # ---------------------------------------------------------------------------
 # ingest_file
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_embedder_and_store():

@@ -1,4 +1,5 @@
 """Anthropic Messages API request/response schemas + conversion helpers."""
+
 from __future__ import annotations
 
 import json
@@ -6,8 +7,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-
 # ── Content blocks ────────────────────────────────────────────────────────────
+
 
 class AnthropicTextBlock(BaseModel):
     type: Literal["text"] = "text"
@@ -40,15 +41,11 @@ class AnthropicToolResultBlock(BaseModel):
     is_error: bool | None = None
 
 
-AnthropicContentBlock = (
-    AnthropicTextBlock
-    | AnthropicImageBlock
-    | AnthropicToolUseBlock
-    | AnthropicToolResultBlock
-)
+AnthropicContentBlock = AnthropicTextBlock | AnthropicImageBlock | AnthropicToolUseBlock | AnthropicToolResultBlock
 
 
 # ── Tool definitions ──────────────────────────────────────────────────────────
+
 
 class AnthropicToolInputSchema(BaseModel):
     type: Literal["object"] = "object"
@@ -75,12 +72,11 @@ class AnthropicToolChoiceTool(BaseModel):
     name: str
 
 
-AnthropicToolChoice = (
-    AnthropicToolChoiceAuto | AnthropicToolChoiceAny | AnthropicToolChoiceTool
-)
+AnthropicToolChoice = AnthropicToolChoiceAuto | AnthropicToolChoiceAny | AnthropicToolChoiceTool
 
 
 # ── Request ───────────────────────────────────────────────────────────────────
+
 
 class AnthropicMessage(BaseModel):
     role: Literal["user", "assistant"]
@@ -104,6 +100,7 @@ class AnthropicRequest(BaseModel):
 
 # ── Response ──────────────────────────────────────────────────────────────────
 
+
 class AnthropicUsage(BaseModel):
     input_tokens: int = 0
     output_tokens: int = 0
@@ -121,6 +118,7 @@ class AnthropicResponse(BaseModel):
 
 
 # ── Conversion helpers ────────────────────────────────────────────────────────
+
 
 def _finish_reason_to_stop_reason(finish_reason: str | None) -> str | None:
     return {
@@ -157,28 +155,30 @@ def anthropic_to_openai_messages(request: AnthropicRequest) -> list[dict]:
             if isinstance(block, AnthropicTextBlock):
                 text_parts.append(block.text)
             elif isinstance(block, AnthropicToolUseBlock):
-                tool_calls.append({
-                    "id": block.id,
-                    "type": "function",
-                    "function": {
-                        "name": block.name,
-                        "arguments": json.dumps(block.input),
-                    },
-                })
+                tool_calls.append(
+                    {
+                        "id": block.id,
+                        "type": "function",
+                        "function": {
+                            "name": block.name,
+                            "arguments": json.dumps(block.input),
+                        },
+                    }
+                )
             elif isinstance(block, AnthropicToolResultBlock):
                 if isinstance(block.content, str):
                     result_content = block.content
                 elif isinstance(block.content, list):
-                    result_content = "\n".join(
-                        b.text for b in block.content if isinstance(b, AnthropicTextBlock)
-                    )
+                    result_content = "\n".join(b.text for b in block.content if isinstance(b, AnthropicTextBlock))
                 else:
                     result_content = ""
-                tool_results.append({
-                    "role": "tool",
-                    "tool_call_id": block.tool_use_id,
-                    "content": result_content,
-                })
+                tool_results.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": block.tool_use_id,
+                        "content": result_content,
+                    }
+                )
 
         if tool_results:
             messages.extend(tool_results)
@@ -234,12 +234,14 @@ def openai_response_to_anthropic(response: Any, model: str) -> AnthropicResponse
                 args = json.loads(tc.function.arguments or "{}")
             except (ValueError, AttributeError):
                 args = {}
-            content.append(AnthropicToolUseBlock(
-                type="tool_use",
-                id=tc.id,
-                name=tc.function.name,
-                input=args,
-            ))
+            content.append(
+                AnthropicToolUseBlock(
+                    type="tool_use",
+                    id=tc.id,
+                    name=tc.function.name,
+                    input=args,
+                )
+            )
 
     usage = getattr(response, "usage", None)
     return AnthropicResponse(
