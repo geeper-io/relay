@@ -96,6 +96,96 @@ On PostgreSQL, a `usage_daily` materialized view is created at startup and refre
 pre-aggregates all records by `(day, user, team, model)`, so leaderboard and time-series queries stay fast regardless of
 how many raw rows accumulate. On SQLite (dev) all queries run directly against `usage_records`.
 
+## Knowledge base management
+
+All KB endpoints require `Authorization: Bearer <PROXY_MASTER_KEY>`.
+
+**Upload a file:**
+
+```bash
+curl -X POST http://localhost:8000/internal/kb/upload \
+  -H "Authorization: Bearer $MASTER_KEY" \
+  -F "file=@docs/handbook.md"
+# → {"filename": "handbook.md", "chunks_ingested": 14}
+```
+
+Supported extensions: `.txt`, `.md`, `.rst`, `.py`, `.js`, `.ts`, `.go`, `.rb`, `.java`, `.rs`, `.c`, `.cpp`,
+`.cs`, `.php`, `.swift`, `.kt`, `.scala`, `.sh`. Re-uploading the same filename replaces the existing chunks.
+
+**Sync a GitHub or GitLab repository:**
+
+```bash
+# Incremental — skips if HEAD SHA matches the stored cursor
+curl -X POST http://localhost:8000/internal/kb/sync-repo \
+  -H "Authorization: Bearer $MASTER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"provider": "github", "repo": "myorg/backend", "token": "ghp_...", "ref": "main"}'
+
+# Force full re-index
+curl -X POST http://localhost:8000/internal/kb/sync-repo \
+  -H "Authorization: Bearer $MASTER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"provider": "gitlab", "repo": "123", "token": "glpat-...", "host": "https://gitlab.example.com", "force": true}'
+```
+
+Returns immediately with `{"status": "started", ...}` — sync runs in the background.
+
+**Debug retrieval:**
+
+```bash
+# Run a raw vector search; shows distances and threshold pass/fail per chunk
+curl "http://localhost:8000/internal/kb/search?q=authentication+middleware&n=5&repo=myorg/backend" \
+  -H "Authorization: Bearer $MASTER_KEY"
+```
+
+Response:
+
+```json
+{
+  "query": "authentication middleware",
+  "threshold": 0.75,
+  "results": [
+    {
+      "distance": 0.61,
+      "above_threshold": false,
+      "source": "myorg/backend/middleware/auth.go",
+      "symbol": "AuthMiddleware",
+      "doc_type": "code",
+      "text_preview": "func AuthMiddleware(next http.Handler) http.Handler {..."
+    }
+  ]
+}
+```
+
+`above_threshold: false` means the chunk passes the filter and would be injected into context. `distance` is cosine
+distance (0 = identical, 1 = orthogonal); lower is more similar.
+
+**Stats:**
+
+```bash
+curl http://localhost:8000/internal/kb/stats \
+  -H "Authorization: Bearer $MASTER_KEY"
+# → {"total_documents": 4821}
+```
+
+**Delete chunks for a specific source:**
+
+```bash
+curl -X DELETE "http://localhost:8000/internal/kb/source?path=myorg/backend/middleware/auth.go" \
+  -H "Authorization: Bearer $MASTER_KEY"
+# → {"deleted_chunks": 3, "source": "myorg/backend/middleware/auth.go"}
+```
+
+**Reset the entire knowledge base:**
+
+```bash
+curl -X DELETE http://localhost:8000/internal/kb/reset \
+  -H "Authorization: Bearer $MASTER_KEY"
+# → {"status": "reset", "collection": "internal_kb"}
+```
+
+This drops and recreates the ChromaDB collection. All synced SHAs are also cleared.
+
 ## Prometheus metrics
 
 Metrics are available at `http://localhost:8000/metrics`.

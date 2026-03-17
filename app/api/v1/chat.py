@@ -111,7 +111,9 @@ async def chat_completions(
         rag_chunks = 0
         if settings.rag_enabled:
             query_text = _last_user_message(scrubbed_messages)
-            context, rag_chunks = await retriever.retrieve_context(query_text)
+            rag_repo = raw_request.headers.get("x-relay-repo")
+            rag_filters = {"repo": rag_repo} if rag_repo else None
+            context, rag_chunks = await retriever.retrieve_context(query_text, filters=rag_filters)
             if context:
                 scrubbed_messages = _inject_rag_context(scrubbed_messages, context)
                 rag_used = True

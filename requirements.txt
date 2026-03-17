@@ -17,6 +17,7 @@ spacy>=3.7.4
 # RAG
 chromadb>=0.5.0
 sentence-transformers>=2.7.0
+tree-sitter-languages>=1.10.0  # pre-compiled grammars for 40+ languages
 
 # Database
 sqlalchemy[asyncio]>=2.0.30

@@ -17,6 +17,18 @@ _PLACEHOLDER_PREFIX = "<<PII_"
 _PLACEHOLDER_SUFFIX = ">>"
 _PLACEHOLDER_RE = re.compile(r"<<PII_[A-Z_]+_[a-f0-9]{8}>>")
 
+# Unified diff markers — unambiguously non-conversational; skip PII scrubbing entirely.
+# Matches:
+#   - git diff header:  "diff --git a/foo b/foo"
+#   - unified hunk header: "@@ -1,5 +2,7 @@"  (git, svn diff, diff -u, patch files)
+# Code blocks (```) are intentionally excluded: a docstring or comment inside a
+# code block can still contain real emails or phone numbers.
+_DIFF_RE = re.compile(
+    r"^diff --git "                           # git unified diff header
+    r"|^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@",  # unified diff hunk header
+    re.MULTILINE,
+)
+
 
 def _make_placeholder(entity_type: str) -> str:
     short_id = uuid.uuid4().hex[:8]
@@ -28,6 +40,7 @@ class PIIScrubber:
         self._enabled = settings.pii_enabled
         self._threshold = settings.pii_score_threshold
         self._entities = settings.pii_entities
+        self._allow_set = {s.lower() for s in settings.pii_allow_list}
 
         if self._enabled:
             nlp_engine = NlpEngineProvider(nlp_configuration={
@@ -76,6 +89,13 @@ class PIIScrubber:
                 scrubbed_messages.append(msg)
                 continue
 
+            # Skip scrubbing for git diffs — identifiers, class names, etc. would
+            # produce too many false positives. Regular code blocks are still scrubbed
+            # because docstrings/comments can contain real PII.
+            if _DIFF_RE.search(content):
+                scrubbed_messages.append(msg)
+                continue
+
             scrubbed_content, n = self._scrub_text(
                 content, restoration_map, original_to_placeholder
             )
@@ -96,6 +116,10 @@ class PIIScrubber:
             language="en",
             score_threshold=self._threshold,
         )
+
+        # Filter out allow-listed terms
+        if self._allow_set:
+            results = [r for r in results if text[r.start:r.end].lower() not in self._allow_set]
 
         if not results:
             return text, 0

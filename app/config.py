@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     # RAG
     rag__enabled: bool = True
     rag__top_k: int = 5
-    rag__score_threshold: float = 0.4
+    rag__score_threshold: float = 0.75  # cosine distance; 0=identical, 1=orthogonal. 0.75 tuned for all-MiniLM-L6-v2 on mixed code+doc corpora
     rag__embedding_model: str = "all-MiniLM-L6-v2"
     rag__context_prefix: str = "Relevant internal documentation:\n\n"
     rag__context_separator: str = "\n\n---\n\n"
@@ -87,6 +87,7 @@ class Settings(BaseSettings):
         "PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER",
         "CREDIT_CARD", "US_SSN", "IP_ADDRESS",
     ]
+    pii__allow_list: list[str] = []  # exact strings that should never be scrubbed (e.g. class names)
 
     # Rate limiting
     rate_limiting__enabled: bool = True
@@ -126,6 +127,22 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
     auth_base_url: str = "http://localhost:8000"
+
+    # Code review — repo auto-sync
+    # GitHub: set token to enable. orgs/exclude are optional filters.
+    code_review__github__token: str = ""
+    code_review__github__include: list[str] = []   # whitelist: if set, only these repos. e.g. ["org/api", "org/core"]
+    code_review__github__orgs: list[str] = []      # discover all repos in these orgs (ignored when include is set)
+    code_review__github__exclude: list[str] = []   # blacklist on top of include/discovered
+    code_review__github__ref: str = "main"
+    # GitLab: set token to enable.
+    code_review__gitlab__token: str = ""
+    code_review__gitlab__host: str = "https://gitlab.com"
+    code_review__gitlab__include: list[str] = []   # whitelist: project IDs or paths. e.g. ["123", "group/project"]
+    code_review__gitlab__groups: list[str] = []    # discover all projects in these groups (ignored when include is set)
+    code_review__gitlab__exclude: list[str] = []
+    code_review__gitlab__ref: str = "main"
+    code_review__sync_on_startup: bool = True  # set False when using the sync CronJob
 
     @property
     def host(self) -> str:
@@ -200,6 +217,10 @@ class Settings(BaseSettings):
         return self.pii__entities
 
     @property
+    def pii_allow_list(self) -> list[str]:
+        return self.pii__allow_list
+
+    @property
     def rate_limit_enabled(self) -> bool:
         return self.rate_limiting__enabled
 
@@ -270,6 +291,54 @@ class Settings(BaseSettings):
     @property
     def oauth_enabled(self) -> bool:
         return bool(self.google_client_id and self.google_client_secret)
+
+    @property
+    def github_token(self) -> str:
+        return self.code_review__github__token
+
+    @property
+    def github_include(self) -> list[str]:
+        return self.code_review__github__include
+
+    @property
+    def github_orgs(self) -> list[str]:
+        return self.code_review__github__orgs
+
+    @property
+    def github_exclude(self) -> list[str]:
+        return self.code_review__github__exclude
+
+    @property
+    def github_ref(self) -> str:
+        return self.code_review__github__ref
+
+    @property
+    def gitlab_token(self) -> str:
+        return self.code_review__gitlab__token
+
+    @property
+    def gitlab_host(self) -> str:
+        return self.code_review__gitlab__host
+
+    @property
+    def gitlab_include(self) -> list[str]:
+        return self.code_review__gitlab__include
+
+    @property
+    def gitlab_groups(self) -> list[str]:
+        return self.code_review__gitlab__groups
+
+    @property
+    def gitlab_exclude(self) -> list[str]:
+        return self.code_review__gitlab__exclude
+
+    @property
+    def gitlab_ref(self) -> str:
+        return self.code_review__gitlab__ref
+
+    @property
+    def sync_on_startup(self) -> bool:
+        return self.code_review__sync_on_startup
 
 
 @lru_cache

@@ -1,0 +1,78 @@
+{{- if .Values.syncJob.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "relay.fullname" . }}-sync
+  labels:
+    {{- include "relay.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.syncJob.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "relay.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: sync-worker
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ include "relay.serviceAccountName" . }}
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: sync-worker
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["python", "-m", "app.sync_worker"]
+
+              env:
+                - name: CONFIG_FILE
+                  value: /app/config/config.yaml
+
+                - name: CODE_REVIEW__GITHUB__TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "relay.secretName" . }}
+                      key: CODE_REVIEW__GITHUB__TOKEN
+                      optional: true
+                - name: CODE_REVIEW__GITLAB__TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "relay.secretName" . }}
+                      key: CODE_REVIEW__GITLAB__TOKEN
+                      optional: true
+
+                {{- if .Values.chromadb.server.enabled }}
+                - name: CHROMA_HOST
+                  value: {{ include "relay.fullname" . }}-chromadb
+                - name: CHROMA_PORT
+                  value: {{ .Values.chromadb.server.port | quote }}
+                {{- end }}
+
+              resources:
+                {{- toYaml .Values.syncJob.resources | nindent 16 }}
+
+              volumeMounts:
+                - name: config
+                  mountPath: /app/config
+                  readOnly: true
+                {{- if and .Values.persistence.chroma.enabled (not .Values.chromadb.server.enabled) }}
+                - name: chroma
+                  mountPath: /app/chroma_data
+                {{- end }}
+
+          volumes:
+            - name: config
+              configMap:
+                name: {{ include "relay.fullname" . }}-config
+            {{- if and .Values.persistence.chroma.enabled (not .Values.chromadb.server.enabled) }}
+            - name: chroma
+              persistentVolumeClaim:
+                claimName: {{ include "relay.chromaPvcName" . }}
+            {{- end }}
+{{- end }}

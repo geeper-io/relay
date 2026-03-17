@@ -121,9 +121,11 @@ class LLMClient:
             )
             if api_key:
                 call_kwargs["api_key"] = api_key
-            if self._settings.fallback_models:
+            # Don't use litellm fallbacks with a passthrough key — litellm doesn't
+            # propagate api_key to fallback calls, so they'd use the proxy's own key.
+            if self._settings.fallback_models and not api_key:
                 call_kwargs["fallbacks"] = self._settings.fallback_models
-            if len(self._settings.allowed_models) > 1:
+            if len(self._settings.allowed_models) > 1 and not api_key:
                 call_kwargs["context_window_fallback_dict"] = self._context_window_fallbacks()
 
             response = await litellm.acompletion(**call_kwargs)
@@ -158,7 +160,7 @@ class LLMClient:
             )
             if api_key:
                 call_kwargs["api_key"] = api_key
-            if self._settings.fallback_models:
+            if self._settings.fallback_models and not api_key:
                 call_kwargs["fallbacks"] = self._settings.fallback_models
 
             response = await litellm.acompletion(**call_kwargs)

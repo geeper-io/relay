@@ -20,8 +20,11 @@ Drop-in OpenAI & Anthropic compatible. Deploy to Kubernetes in minutes.
   middleware without issuing a separate key
 - **PII scrubbing** — strips personal data from requests before they leave your network using Microsoft Presidio (
   NLP-based) and custom regex patterns; restores placeholders in responses
-- **RAG / internal knowledge base** — enriches answers with context from your internal docs (Markdown, text) via
-  ChromaDB vector search
+- **RAG / internal knowledge base** — enriches answers with context from your internal docs and code via ChromaDB
+  vector search; AST-aware chunking for 15+ languages (tree-sitter)
+- **Code review** — sync GitHub and GitLab repositories into the knowledge base; when you send a diff for review,
+  Relay automatically injects relevant context from the indexed codebase so the model can reason about your actual
+  conventions, patterns, and dependencies
 - **Usage tracking** — every request is logged with model, tokens, cost, latency, and user identity to a database
 - **Prometheus metrics** — request count, latency, token usage, cost, cache hits, PII events, RAG hits, and rate limit
   events
@@ -79,6 +82,14 @@ Your existing code works without any other changes. Get your `gr-...` key by log
 
 ---
 
+## Request pipeline
+
+Every request passes through 9 stages in order:
+
+![Request pipeline](docs/pipeline.png)
+
+---
+
 ## Kubernetes (Helm)
 
 Requires Helm 3.x and a cluster with a default StorageClass. `PROXY_MASTER_KEY` is auto-generated on first install and
@@ -112,14 +123,6 @@ Services started by compose: `proxy` (port 8000), `postgres`, `prometheus` (port
 
 ---
 
-## Request pipeline
-
-Every request passes through 9 stages in order:
-
-![Request pipeline](docs/pipeline.png)
-
----
-
 ## Development
 
 ```bash
@@ -142,7 +145,8 @@ Tests use SQLite in-memory and skip RAG by default. PII tests require a spaCy mo
 
 ## Further reading
 
-- [Configuration reference](docs/configuration.md) — LLM providers, PII, RAG, rate limiting, caching, content policy,
-  Google SSO, Langfuse
+- [Configuration reference](docs/configuration.md) — LLM providers, PII, RAG, repo sync / code review, rate limiting,
+  caching, content policy, Google SSO, Langfuse
 - [Helm reference](docs/helm.md) — production values, scaling, secret management
-- [Admin API](docs/admin-api.md) — user/key management, usage reports, leaderboards, Prometheus metrics
+- [Admin API](docs/admin-api.md) — user/key management, usage reports, leaderboards, knowledge base management,
+  Prometheus metrics

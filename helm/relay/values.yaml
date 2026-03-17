@@ -54,12 +54,13 @@ config:
   rag:
     enabled: true
     topK: 5
-    scoreThreshold: 0.4
+    scoreThreshold: 0.75
     embeddingModel: "all-MiniLM-L6-v2"
 
   pii:
     enabled: true
     scoreThreshold: 0.7
+    allowList: []   # exact strings that bypass PII detection (e.g. class names misdetected as PERSON)
     entities:
       - PERSON
       - EMAIL_ADDRESS
@@ -96,6 +97,34 @@ config:
     enabled: false
     provider: "langfuse"
 
+  codeReview:
+    syncOnStartup: true  # set false when syncJob.enabled=true to avoid duplicate work
+    github:
+      include: []       # whitelist: if set, only these repos are synced. e.g. ["org/api"]
+      orgs: []          # discover all repos in these orgs (ignored when include is set)
+      exclude: []       # e.g. ["org/legacy", "org/archived"]
+      ref: main
+    gitlab:
+      host: "https://gitlab.com"
+      include: []       # whitelist: project IDs or paths. e.g. ["123", "group/project"]
+      groups: []        # discover all projects in these groups (ignored when include is set)
+      exclude: []
+      ref: main
+
+# ── Repo sync CronJob ─────────────────────────────────────────────────────────
+# Runs the sync worker as a separate pod on a schedule.
+# Recommended for production: set syncJob.enabled=true and config.codeReview.syncOnStartup=false.
+syncJob:
+  enabled: false
+  schedule: "*/15 * * * *"   # every 15 minutes
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
 # ── Secrets ───────────────────────────────────────────────────────────────────
 # When secrets.create=true a Secret is created from the values below.
 # For production, set secrets.create=false and provide secrets.existingSecret
@@ -124,6 +153,10 @@ secrets:
   langfusePublicKey: ""
   langfuseSecretKey: ""
   langfuseHost: ""                   # empty = Langfuse Cloud; set for self-hosted
+
+  # Code review — repo auto-sync (set token to enable)
+  githubToken: ""                    # PAT with repo:read scope
+  gitlabToken: ""                    # PAT with read_api scope
 
 # ── External database ─────────────────────────────────────────────────────────
 # Set externalDatabase.url to skip the bundled PostgreSQL subchart.
