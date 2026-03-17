@@ -50,6 +50,20 @@ pii:
     - LOCATION
 ```
 
+## Allow list
+
+Terms in `pii.allow_list` are never scrubbed, regardless of Presidio's confidence. Useful for internal class names, product names, or other identifiers that the NER model consistently mis-classifies.
+
+```yaml
+pii:
+  allow_list:
+    - Settings    # class name detected as a person name
+    - Config
+    - Manager
+```
+
+Matching is case-insensitive — `"settings"` in the allow list protects `Settings`, `SETTINGS`, etc.
+
 ## Score threshold
 
 `pii.score_threshold` (default `0.7`) controls Presidio's minimum confidence before an entity is redacted. Lower values catch more entities but increase false positives.
@@ -58,6 +72,12 @@ pii:
 pii:
   score_threshold: 0.7
 ```
+
+## Code and diff handling
+
+Messages that are git diffs (containing `diff --git` or a unified hunk header `@@ -N,N +N,N @@`) are passed through **without scrubbing**. Variable names, class names, and other identifiers in code produce too many false positives to make scrubbing useful in this context.
+
+Regular code blocks inside ` ``` ` fences are still scrubbed — a docstring or comment inside a code block can contain real emails or phone numbers.
 
 ## Engine
 

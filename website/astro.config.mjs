@@ -37,6 +37,7 @@ export default defineConfig({
             { label: "PII Scrubbing", slug: "docs/features/pii-scrubbing" },
             { label: "Content Policy", slug: "docs/features/content-policy" },
             { label: "RAG", slug: "docs/features/rag" },
+            { label: "Code Review", slug: "docs/features/code-review" },
             { label: "Caching", slug: "docs/features/caching" },
             { label: "Analytics", slug: "docs/features/analytics" },
           ],

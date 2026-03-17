@@ -43,6 +43,7 @@ Drop-in OpenAI & Anthropic compatible. Deploy to Kubernetes in minutes.
 | OpenAI compatible        |   ✅   |       ✅       |    ✅    |     ✅      |
 | Anthropic compatible     |   ✅   |       ✅       |    ✅    |     ✅      |
 | RAG / internal knowledge |   ✅   |       ❌       |    ❌    |     ❌      |
+| Code review w/ RAG       |   ✅   |       ❌       |    ❌    |     ❌      |
 | PII scrubbing            |   ✅   |       ❌       |    ❌    |     ❌      |
 | SSO                      |   ✅   |       ❌       |    ❌    |     ❌      |
 | Per-user rate limiting   |   ✅   |       ✅       |    ✅    |     ❌      |
