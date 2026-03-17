@@ -1,6 +1,4 @@
 import os
-import pytest
-import pytest_asyncio
 
 # Use SQLite in-memory for tests
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")

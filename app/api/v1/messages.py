@@ -4,6 +4,7 @@ Drop-in target for Claude Code and Anthropic SDK clients:
     export ANTHROPIC_BASE_URL=http://your-proxy:8000
     export ANTHROPIC_AUTH_TOKEN=gr-<your-key>
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -14,6 +15,9 @@ from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
+
+from app.analytics.langfuse import build_trace_metadata
+from app.api.v1.chat import _inject_rag_context, _last_user_message
 from app.config import Settings, get_settings
 from app.core.auth import ResolvedIdentity, resolve_identity
 from app.core.content_policy import ContentPolicy, get_content_policy
@@ -25,18 +29,16 @@ from app.metrics import prometheus as m
 from app.pii.restorer import PIIRestorer, get_restorer
 from app.pii.scrubber import PIIScrubber, get_scrubber
 from app.rag.retriever import RAGRetriever, get_retriever
-from app.analytics.langfuse import build_trace_metadata
-from app.schemas.openai import ChatMessage as OAIMessage
 from app.schemas.anthropic import (
     AnthropicRequest,
     AnthropicTextBlock,
     _finish_reason_to_stop_reason,
     anthropic_to_openai_messages,
-    anthropic_tools_to_openai,
     anthropic_tool_choice_to_openai,
+    anthropic_tools_to_openai,
     openai_response_to_anthropic,
 )
-from app.api.v1.chat import _last_user_message, _inject_rag_context
+from app.schemas.openai import ChatMessage as OAIMessage
 
 router = APIRouter(tags=["messages"])
 
@@ -172,9 +174,7 @@ async def messages(
         if response.choices:
             for choice in response.choices:
                 if choice.message and choice.message.content:
-                    choice.message.content = restorer.restore(
-                        choice.message.content, restoration_map
-                    )
+                    choice.message.content = restorer.restore(choice.message.content, restoration_map)
 
         # 9. Metrics + usage
         latency_ms = int((time.monotonic() - start_time) * 1000)
@@ -182,14 +182,10 @@ async def messages(
         prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
         completion_tokens = getattr(usage, "completion_tokens", 0) or 0
         cost_usd = llm_client.estimate_cost(model, prompt_tokens, completion_tokens)
-        cache_hit = bool(
-            getattr(getattr(response, "_hidden_params", None), "cache_hit", False)
-        )
+        cache_hit = bool(getattr(getattr(response, "_hidden_params", None), "cache_hit", False))
 
         m.REQUEST_COUNT.labels(model=model, status="success").inc()
-        m.REQUEST_LATENCY.labels(model=model, stream="false").observe(
-            time.monotonic() - start_time
-        )
+        m.REQUEST_LATENCY.labels(model=model, stream="false").observe(time.monotonic() - start_time)
         m.TOKENS_USED.labels(model=model, token_type="prompt").inc(prompt_tokens)
         m.TOKENS_USED.labels(model=model, token_type="completion").inc(completion_tokens)
         m.COST_USD.labels(model=model).inc(cost_usd)
@@ -222,6 +218,7 @@ async def messages(
     except ProxyError as exc:
         _record_error(exc, model, identity, request_id, start_time, pii_count=0)
         from app.core.exceptions import RateLimitError
+
         headers = {"Retry-After": str(exc.retry_after)} if isinstance(exc, RateLimitError) else {}
         return JSONResponse(
             status_code=exc.status_code,
@@ -256,26 +253,29 @@ async def _stream_anthropic(
 
     # Content block tracking (lazily opened)
     next_block_index = 0
-    text_block_index: int | None = None      # set when first text arrives
+    text_block_index: int | None = None  # set when first text arrives
     # OAI tool call index → {block_index, id, name}
     tool_block: dict[int, dict] = {}
 
     def _sse(event: str, data: dict) -> str:
         return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
-    yield _sse("message_start", {
-        "type": "message_start",
-        "message": {
-            "id": message_id,
-            "type": "message",
-            "role": "assistant",
-            "content": [],
-            "model": model,
-            "stop_reason": None,
-            "stop_sequence": None,
-            "usage": {"input_tokens": 0, "output_tokens": 0},
+    yield _sse(
+        "message_start",
+        {
+            "type": "message_start",
+            "message": {
+                "id": message_id,
+                "type": "message",
+                "role": "assistant",
+                "content": [],
+                "model": model,
+                "stop_reason": None,
+                "stop_sequence": None,
+                "usage": {"input_tokens": 0, "output_tokens": 0},
+            },
         },
-    })
+    )
     yield _sse("ping", {"type": "ping"})
 
     try:
@@ -306,20 +306,26 @@ async def _stream_anthropic(
                 if text_block_index is None:
                     text_block_index = next_block_index
                     next_block_index += 1
-                    yield _sse("content_block_start", {
-                        "type": "content_block_start",
-                        "index": text_block_index,
-                        "content_block": {"type": "text", "text": ""},
-                    })
+                    yield _sse(
+                        "content_block_start",
+                        {
+                            "type": "content_block_start",
+                            "index": text_block_index,
+                            "content_block": {"type": "text", "text": ""},
+                        },
+                    )
                 text_buffer += delta_content
                 if not ("<<PII_" in text_buffer and ">>" not in text_buffer.split("<<PII_")[-1]):
                     flushed = restorer.restore(text_buffer, restoration_map)
                     text_buffer = ""
-                    yield _sse("content_block_delta", {
-                        "type": "content_block_delta",
-                        "index": text_block_index,
-                        "delta": {"type": "text_delta", "text": flushed},
-                    })
+                    yield _sse(
+                        "content_block_delta",
+                        {
+                            "type": "content_block_delta",
+                            "index": text_block_index,
+                            "delta": {"type": "text_delta", "text": flushed},
+                        },
+                    )
 
             # ── Tool calls ────────────────────────────────────────────────────
             for tc in delta_tool_calls:
@@ -331,11 +337,14 @@ async def _stream_anthropic(
                     # name arrives in first chunk
                     name = getattr(tc.function, "name", "") or ""
                     tool_block[tc_idx]["name"] = name
-                    yield _sse("content_block_start", {
-                        "type": "content_block_start",
-                        "index": blk,
-                        "content_block": {"type": "tool_use", "id": tc.id or "", "name": name, "input": {}},
-                    })
+                    yield _sse(
+                        "content_block_start",
+                        {
+                            "type": "content_block_start",
+                            "index": blk,
+                            "content_block": {"type": "tool_use", "id": tc.id or "", "name": name, "input": {}},
+                        },
+                    )
                 else:
                     # name may arrive in subsequent chunks for some providers
                     name = getattr(tc.function, "name", "") or ""
@@ -344,20 +353,26 @@ async def _stream_anthropic(
 
                 partial_json = getattr(tc.function, "arguments", "") or ""
                 if partial_json:
-                    yield _sse("content_block_delta", {
-                        "type": "content_block_delta",
-                        "index": tool_block[tc_idx]["block_index"],
-                        "delta": {"type": "input_json_delta", "partial_json": partial_json},
-                    })
+                    yield _sse(
+                        "content_block_delta",
+                        {
+                            "type": "content_block_delta",
+                            "index": tool_block[tc_idx]["block_index"],
+                            "delta": {"type": "input_json_delta", "partial_json": partial_json},
+                        },
+                    )
 
         # ── Flush remaining text buffer ───────────────────────────────────────
         if text_buffer and text_block_index is not None:
             flushed = restorer.restore(text_buffer, restoration_map)
-            yield _sse("content_block_delta", {
-                "type": "content_block_delta",
-                "index": text_block_index,
-                "delta": {"type": "text_delta", "text": flushed},
-            })
+            yield _sse(
+                "content_block_delta",
+                {
+                    "type": "content_block_delta",
+                    "index": text_block_index,
+                    "delta": {"type": "text_delta", "text": flushed},
+                },
+            )
 
         # ── Close all content blocks in order ─────────────────────────────────
         open_blocks = []
@@ -367,14 +382,17 @@ async def _stream_anthropic(
             open_blocks.append(info["block_index"])
         for blk in sorted(open_blocks):
             yield _sse("content_block_stop", {"type": "content_block_stop", "index": blk})
-        yield _sse("message_delta", {
-            "type": "message_delta",
-            "delta": {
-                "stop_reason": _finish_reason_to_stop_reason(finish_reason),
-                "stop_sequence": None,
+        yield _sse(
+            "message_delta",
+            {
+                "type": "message_delta",
+                "delta": {
+                    "stop_reason": _finish_reason_to_stop_reason(finish_reason),
+                    "stop_sequence": None,
+                },
+                "usage": {"output_tokens": completion_tokens},
             },
-            "usage": {"output_tokens": completion_tokens},
-        })
+        )
         yield _sse("message_stop", {"type": "message_stop"})
 
     finally:
@@ -382,9 +400,7 @@ async def _stream_anthropic(
         cost_usd = llm_client.estimate_cost(model, prompt_tokens, completion_tokens)
 
         m.REQUEST_COUNT.labels(model=model, status="success").inc()
-        m.REQUEST_LATENCY.labels(model=model, stream="true").observe(
-            time.monotonic() - start_time
-        )
+        m.REQUEST_LATENCY.labels(model=model, stream="true").observe(time.monotonic() - start_time)
         m.TOKENS_USED.labels(model=model, token_type="prompt").inc(prompt_tokens)
         m.TOKENS_USED.labels(model=model, token_type="completion").inc(completion_tokens)
         m.COST_USD.labels(model=model).inc(cost_usd)

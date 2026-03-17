@@ -1,9 +1,10 @@
 """OpenAI-compatible request/response schemas."""
+
 from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class TextContentPart(BaseModel):
@@ -112,6 +113,7 @@ class ChatCompletionResponse(BaseModel):
 
 
 # Streaming types
+
 
 class DeltaMessage(BaseModel):
     role: str | None = None

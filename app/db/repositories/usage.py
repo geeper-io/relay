@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Literal
 
 from sqlalchemy import Integer, desc, func, select
@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.engine import get_engine, get_session_factory
 from app.db.models import UsageRecord
 
-
 # ── Write ─────────────────────────────────────────────────────────────────────
+
 
 async def record_usage(
     *,
@@ -54,6 +54,7 @@ async def record_usage(
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def _is_postgres() -> bool:
     return get_engine().dialect.name == "postgresql"
 
@@ -70,18 +71,19 @@ def _date_bucket(granularity: str):
 
 _GROUP_COL = {
     "model": UsageRecord.model,
-    "user":  UsageRecord.user_id,
-    "team":  UsageRecord.team_id,
+    "user": UsageRecord.user_id,
+    "team": UsageRecord.team_id,
 }
 
 _METRIC_COL = {
-    "cost_usd":     func.sum(UsageRecord.cost_usd),
+    "cost_usd": func.sum(UsageRecord.cost_usd),
     "total_tokens": func.sum(UsageRecord.total_tokens),
-    "requests":     func.count(UsageRecord.id),
+    "requests": func.count(UsageRecord.id),
 }
 
 
 # ── Queries ───────────────────────────────────────────────────────────────────
+
 
 async def get_usage_summary(
     db: AsyncSession,
@@ -109,9 +111,7 @@ async def get_usage_summary(
         func.sum(UsageRecord.cost_usd).label("cost_usd"),
         func.count(UsageRecord.id).label("requests"),
         func.sum(UsageRecord.cache_hit.cast(Integer)).label("cache_hits"),
-        func.sum(
-            (UsageRecord.status == "error").cast(Integer)
-        ).label("errors"),
+        func.sum((UsageRecord.status == "error").cast(Integer)).label("errors"),
         func.avg(UsageRecord.latency_ms).label("avg_latency_ms"),
     ]
     group_by_cols = [group_col]
@@ -141,14 +141,14 @@ async def get_usage_summary(
     def _row(r) -> dict:
         d: dict = {
             group_by: str(r.group) if r.group else None,
-            "prompt_tokens":    r.prompt_tokens or 0,
+            "prompt_tokens": r.prompt_tokens or 0,
             "completion_tokens": r.completion_tokens or 0,
-            "total_tokens":     r.total_tokens or 0,
-            "cost_usd":         round(r.cost_usd or 0.0, 6),
-            "requests":         r.requests or 0,
-            "cache_hits":       r.cache_hits or 0,
-            "errors":           r.errors or 0,
-            "avg_latency_ms":   round(r.avg_latency_ms or 0.0, 1),
+            "total_tokens": r.total_tokens or 0,
+            "cost_usd": round(r.cost_usd or 0.0, 6),
+            "requests": r.requests or 0,
+            "cache_hits": r.cache_hits or 0,
+            "errors": r.errors or 0,
+            "avg_latency_ms": round(r.avg_latency_ms or 0.0, 1),
         }
         if granularity:
             d["period"] = r.period.isoformat() if hasattr(r.period, "isoformat") else str(r.period)
@@ -167,7 +167,7 @@ async def get_leaderboard(
     limit: int = 10,
 ) -> dict:
     """Return top-N entities ranked by a metric over a time window."""
-    dim_col  = _GROUP_COL[dimension]
+    dim_col = _GROUP_COL[dimension]
     agg_expr = _METRIC_COL[metric].label("value")
 
     q = (
@@ -193,14 +193,14 @@ async def get_leaderboard(
 
     return {
         "dimension": dimension,
-        "metric":    metric,
+        "metric": metric,
         "rows": [
             {
-                "rank":         i + 1,
-                dimension:      str(r.dimension) if r.dimension else None,
-                "value":        round(r.value or 0.0, 6),
-                "requests":     r.requests or 0,
-                "cost_usd":     round(r.cost_usd or 0.0, 6),
+                "rank": i + 1,
+                dimension: str(r.dimension) if r.dimension else None,
+                "value": round(r.value or 0.0, 6),
+                "requests": r.requests or 0,
+                "cost_usd": round(r.cost_usd or 0.0, 6),
                 "total_tokens": r.total_tokens or 0,
             }
             for i, r in enumerate(rows)

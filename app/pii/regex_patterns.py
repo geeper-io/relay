@@ -1,4 +1,5 @@
 """Custom regex-based PII recognizers to supplement Presidio's built-in NLP models."""
+
 from __future__ import annotations
 
 from presidio_analyzer import Pattern, PatternRecognizer

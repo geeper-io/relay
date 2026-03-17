@@ -19,8 +19,5 @@ async def list_models(settings: Settings = Depends(get_settings)):
 
     return {
         "object": "list",
-        "data": [
-            {"id": m, "object": "model", "owned_by": "proxy"}
-            for m in models
-        ],
+        "data": [{"id": m, "object": "model", "owned_by": "proxy"} for m in models],
     }

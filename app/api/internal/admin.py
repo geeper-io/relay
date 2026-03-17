@@ -1,4 +1,5 @@
 """Admin endpoints for usage reporting and user/key management."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -10,7 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import require_admin
 from app.db.engine import get_db
 from app.db.repositories.usage import get_leaderboard, get_usage_summary
-from app.db.repositories.users import create_api_key, create_team, create_user, get_user_by_external_id
+from app.db.repositories.users import (
+    create_api_key,
+    create_team,
+    create_user,
+    get_user_by_external_id,
+)
 
 router = APIRouter(tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -83,9 +89,7 @@ async def create_team_endpoint(
     daily_token_limit: int = 5_000_000,
     db: AsyncSession = Depends(get_db),
 ):
-    team = await create_team(
-        db, name=name, tpm_limit=tpm_limit, daily_token_limit=daily_token_limit
-    )
+    team = await create_team(db, name=name, tpm_limit=tpm_limit, daily_token_limit=daily_token_limit)
     return {"id": team.id, "name": team.name}
 
 
@@ -97,6 +101,7 @@ async def get_user_endpoint(
     user = await get_user_by_external_id(db, external_id=external_id)
     if not user:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail="User not found")
     return {"id": user.id, "external_id": user.external_id, "team_id": user.team_id}
 

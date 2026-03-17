@@ -1,4 +1,5 @@
 """Base interfaces for RAG data source ingestors."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -8,10 +9,11 @@ from dataclasses import dataclass, field
 @dataclass
 class Document:
     """A single fetchable document from any data source."""
-    item_id: str        # stable ID within the source: file path, issue key, page ID, etc.
-    content: str        # raw text content
-    filename: str       # filename with extension — controls which chunker is used
-                        # (e.g. "main.py" → tree-sitter, "PROJ-123.md" → word-based)
+
+    item_id: str  # stable ID within the source: file path, issue key, page ID, etc.
+    content: str  # raw text content
+    filename: str  # filename with extension — controls which chunker is used
+    # (e.g. "main.py" → tree-sitter, "PROJ-123.md" → word-based)
     metadata: dict = field(default_factory=dict)  # extra fields merged into chunk metadata
 
 

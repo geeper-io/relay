@@ -9,6 +9,7 @@ Set these env vars (or config.yaml keys) to enable:
   GOOGLE_CLIENT_SECRET=...
   AUTH_BASE_URL=https://your-proxy.internal   (for the redirect_uri)
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -35,6 +36,7 @@ _GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
 # ── State signing (HMAC-SHA256, no server-side storage needed) ────────────────
 
+
 def _make_state(secret: str) -> str:
     nonce = secrets.token_urlsafe(32)
     sig = hmac.new(secret.encode(), nonce.encode(), hashlib.sha256).hexdigest()[:16]
@@ -51,6 +53,7 @@ def _verify_state(state: str, secret: str) -> bool:
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+
 
 @router.get("/auth/login", include_in_schema=False)
 async def login(settings: Settings = Depends(get_settings)):
@@ -140,6 +143,7 @@ async def oauth_callback(
 
 
 # ── HTML page ─────────────────────────────────────────────────────────────────
+
 
 def _key_page(name: str, email: str, raw_key: str, is_new: bool) -> str:
     safe_name = escape(name)

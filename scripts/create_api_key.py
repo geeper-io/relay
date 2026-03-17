@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """CLI script to provision a user + API key."""
+
 import asyncio
 import sys
 from pathlib import Path
@@ -9,7 +10,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.config import get_settings
 from app.db.engine import create_all_tables, get_session_factory
-from app.db.repositories.users import create_api_key, create_team, create_user, get_user_by_external_id
+from app.db.repositories.users import (
+    create_api_key,
+    create_team,
+    create_user,
+    get_user_by_external_id,
+)
 
 
 async def main():
@@ -21,7 +27,7 @@ async def main():
     parser.add_argument("--key-name", default="default", help="Name for the API key")
     args = parser.parse_args()
 
-    settings = get_settings()
+    get_settings()  # loads config and seeds environment
     await create_all_tables()
 
     factory = get_session_factory()
@@ -30,7 +36,9 @@ async def main():
         team_id = None
         if args.team:
             from sqlalchemy import select
+
             from app.db.models import Team
+
             result = await db.execute(select(Team).where(Team.name == args.team))
             team = result.scalar_one_or_none()
             if not team:
@@ -50,7 +58,7 @@ async def main():
 
         # Create API key
         raw_key, api_key = await create_api_key(db, user_id=user.id, name=args.key_name)
-        print(f"\nAPI Key created (shown once — save it now):")
+        print("\nAPI Key created (shown once — save it now):")
         print(f"  Key:    {raw_key}")
         print(f"  Prefix: {api_key.key_prefix}")
         print(f"  ID:     {api_key.id}")

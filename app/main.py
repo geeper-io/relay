@@ -8,15 +8,14 @@ from contextlib import asynccontextmanager
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
+from app.analytics.langfuse import init_langfuse
 from app.config import get_settings
 from app.core.content_policy import init_content_policy
 from app.core.exceptions import ProxyError, proxy_exception_handler
 from app.core.rate_limiter import init_rate_limiter
-from app.db.engine import create_all_tables
 from app.db.analytics import ensure_analytics_view, refresh_analytics_view
-from app.analytics.langfuse import init_langfuse
+from app.db.engine import create_all_tables
 from app.llm.client import init_cache, init_llm_client
 from app.metrics.prometheus import metrics_response
 from app.pii.restorer import init_restorer
@@ -67,8 +66,7 @@ async def lifespan(app: FastAPI):
 
         # Auto-sync repos if credentials are configured and not offloaded to CronJob
         if settings.sync_on_startup and (
-            settings.github_token or settings.github_include
-            or settings.gitlab_token or settings.gitlab_include
+            settings.github_token or settings.github_include or settings.gitlab_token or settings.gitlab_include
         ):
             log.info("Starting background repo sync...")
             asyncio.create_task(auto_sync_repos(settings))
@@ -119,8 +117,6 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    settings = get_settings()
-
     app = FastAPI(
         title="Geeper Relay",
         description="In-house AI gateway with PII scrubbing, RAG, usage tracking, and Prometheus metrics",
@@ -151,14 +147,14 @@ def create_app() -> FastAPI:
     app.add_exception_handler(ProxyError, proxy_exception_handler)
 
     # Routers
+    from app.api.auth import router as auth_router
+    from app.api.internal.admin import router as admin_router
+    from app.api.internal.kb import router as kb_router
     from app.api.v1.chat import router as chat_router
     from app.api.v1.embeddings import router as embeddings_router
     from app.api.v1.health import router as health_router
     from app.api.v1.messages import router as messages_router
     from app.api.v1.models import router as models_router
-    from app.api.internal.admin import router as admin_router
-    from app.api.internal.kb import router as kb_router
-    from app.api.auth import router as auth_router
 
     app.include_router(health_router)
     app.include_router(chat_router, prefix="/v1")

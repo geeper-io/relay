@@ -11,6 +11,7 @@ EU cloud: set LANGFUSE_HOST=https://cloud.langfuse.com (default is https://cloud
 
 Requires langfuse>=2.59.7,<3.0.0 — see requirements.txt.
 """
+
 from __future__ import annotations
 
 import logging
@@ -40,13 +41,11 @@ def init_langfuse(settings) -> bool:
         return False
 
     if not settings.langfuse_public_key or not settings.langfuse_secret_key:
-        log.warning(
-            "Langfuse analytics enabled but LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY "
-            "are not set — skipping"
-        )
+        log.warning("Langfuse analytics enabled but LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY are not set — skipping")
         return False
 
     import os
+
     os.environ.setdefault("LANGFUSE_PUBLIC_KEY", settings.langfuse_public_key)
     os.environ.setdefault("LANGFUSE_SECRET_KEY", settings.langfuse_secret_key)
     if settings.langfuse_host:

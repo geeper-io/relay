@@ -12,12 +12,12 @@ by a background task in main.py:
 The unique index on (day, user_id, team_id, model) enables
 REFRESH MATERIALIZED VIEW CONCURRENTLY so refreshes don't block reads.
 """
+
 from __future__ import annotations
 
 import logging
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.engine import get_engine
 
@@ -48,9 +48,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS ix_usage_daily_pk
 ON usage_daily (day, user_id, team_id, model)
 """)
 
-_CREATE_IDX_DAY   = text("CREATE INDEX IF NOT EXISTS ix_usage_daily_day  ON usage_daily (day)")
-_CREATE_IDX_TEAM  = text("CREATE INDEX IF NOT EXISTS ix_usage_daily_team ON usage_daily (team_id, day)")
-_CREATE_IDX_USER  = text("CREATE INDEX IF NOT EXISTS ix_usage_daily_user ON usage_daily (user_id, day)")
+_CREATE_IDX_DAY = text("CREATE INDEX IF NOT EXISTS ix_usage_daily_day  ON usage_daily (day)")
+_CREATE_IDX_TEAM = text("CREATE INDEX IF NOT EXISTS ix_usage_daily_team ON usage_daily (team_id, day)")
+_CREATE_IDX_USER = text("CREATE INDEX IF NOT EXISTS ix_usage_daily_user ON usage_daily (user_id, day)")
 
 _REFRESH = text("REFRESH MATERIALIZED VIEW CONCURRENTLY usage_daily")
 

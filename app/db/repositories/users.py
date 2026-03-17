@@ -21,7 +21,7 @@ async def get_user_by_key_hash(db: AsyncSession, key_hash: str) -> tuple[User, A
     result = await db.execute(
         select(User, ApiKey)
         .join(ApiKey, ApiKey.user_id == User.id)
-        .where(ApiKey.key_hash == key_hash, ApiKey.is_active == True, User.is_active == True)
+        .where(ApiKey.key_hash == key_hash, ApiKey.is_active.is_(True), User.is_active.is_(True))
     )
     row = result.first()
     return row if row else None

@@ -2,6 +2,7 @@
 Backwards-compatible shims — thin wrappers around the ingestor + sync_engine.
 New code should use sync_engine.sync_ingestor() directly.
 """
+
 from __future__ import annotations
 
 from app.rag.ingestors.github import GitHubIngestor

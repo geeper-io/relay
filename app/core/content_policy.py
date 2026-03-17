@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from app.config import Settings, get_settings
+from app.config import Settings
 from app.core.exceptions import ContentPolicyError
 from app.schemas.openai import ChatMessage
 
@@ -10,10 +10,7 @@ from app.schemas.openai import ChatMessage
 class ContentPolicy:
     def __init__(self, settings: Settings):
         self._settings = settings
-        self._compiled = [
-            re.compile(pattern, re.IGNORECASE)
-            for pattern in settings.blocked_patterns
-        ]
+        self._compiled = [re.compile(pattern, re.IGNORECASE) for pattern in settings.blocked_patterns]
 
     def check(self, messages: list[ChatMessage]) -> None:
         if not self._settings.content_policy_enabled:
@@ -24,15 +21,12 @@ class ContentPolicy:
         # Token length guard (rough char-based estimate)
         if len(combined) // 4 > self._settings.max_input_tokens:
             raise ContentPolicyError(
-                f"Input exceeds maximum allowed length "
-                f"(~{self._settings.max_input_tokens} tokens)"
+                f"Input exceeds maximum allowed length (~{self._settings.max_input_tokens} tokens)"
             )
 
         for pattern in self._compiled:
             if pattern.search(combined):
-                raise ContentPolicyError(
-                    "Request blocked by content policy"
-                )
+                raise ContentPolicyError("Request blocked by content policy")
 
 
 _policy: ContentPolicy | None = None
