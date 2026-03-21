@@ -9,29 +9,13 @@ description: Deploy Geeper Relay to Kubernetes with the production Helm chart.
 - Helm ≥ 3.8
 - A cluster with default StorageClass that supports ReadWriteOnce PVCs
 
-## 1. Add the Bitnami chart repository
+## 1. Install
 
-The Helm chart uses Bitnami subcharts for PostgreSQL and Redis:
-
-```bash
-helm repo add bitnami https://charts.bitnami.com/bitnami
-helm repo update
-```
-
-## 2. Fetch chart dependencies
+The chart is published to GHCR as an OCI artifact — no `helm repo add` needed. Minimal install with OpenAI key and an Ingress:
 
 ```bash
-helm dependency build ./helm/relay
-```
-
-This downloads the Bitnami PostgreSQL and Redis charts into `helm/relay/charts/`.
-
-## 3. Install
-
-Minimal install with OpenAI key and an Ingress:
-
-```bash
-helm install relay ./helm/relay \
+helm install relay oci://ghcr.io/geeper-io/charts/relay \
+  --version <version> \
   --set secrets.openaiApiKey=$OPENAI_API_KEY \
   --set ingress.enabled=true \
   --set ingress.hosts[0].host=proxy.internal \
@@ -73,8 +57,8 @@ curl -X POST https://proxy.internal/internal/api-keys \
 ## Upgrading
 
 ```bash
-helm upgrade relay ./helm/relay \
-  --set secrets.openaiApiKey=$OPENAI_API_KEY \
+helm upgrade relay oci://ghcr.io/geeper-io/charts/relay \
+  --version <new-version> \
   --reuse-values
 ```
 
@@ -130,7 +114,7 @@ prometheus:
 ```
 
 ```bash
-helm upgrade --install relay ./helm/relay -f values-prod.yaml
+helm upgrade --install relay oci://ghcr.io/geeper-io/charts/relay --version <version> -f values-prod.yaml
 ```
 
 See [Helm values reference](/docs/deployment/helm-reference) for the full list of options.

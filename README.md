@@ -55,9 +55,7 @@ Drop-in OpenAI & Anthropic compatible. Deploy to Kubernetes in minutes.
 ## Quick start
 
 ```bash
-helm repo add bitnami https://charts.bitnami.com/bitnami && helm repo update
-helm dependency build helm/relay
-helm upgrade --install relay helm/relay \
+helm install relay oci://ghcr.io/geeper-io/charts/relay \
   --namespace relay --create-namespace \
   --set secrets.openaiApiKey=sk-... \
   --set secrets.anthropicApiKey=sk-ant-... \
@@ -93,8 +91,11 @@ Every request passes through 9 stages in order:
 
 ## Kubernetes (Helm)
 
-Requires Helm 3.x and a cluster with a default StorageClass. `PROXY_MASTER_KEY` is auto-generated on first install and
-preserved across upgrades.
+The chart is published to GHCR as an OCI artifact. Requires Helm ≥ 3.8 and a cluster with a default StorageClass. `PROXY_MASTER_KEY` is auto-generated on first install and preserved across upgrades.
+
+```bash
+helm install relay oci://ghcr.io/geeper-io/charts/relay --version <version>
+```
 
 For production values, scaling, and secret management see [docs/helm.md](docs/helm.md).
 

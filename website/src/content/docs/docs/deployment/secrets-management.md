@@ -8,7 +8,8 @@ description: How proxy secrets are stored, and how to bring your own from Vault,
 With `secrets.create: true` (default), Helm creates a Secret from the values you pass via `--set` or a values file:
 
 ```bash
-helm install relay ./helm/relay \
+helm install relay oci://ghcr.io/geeper-io/charts/relay \
+  --version <version> \
   --set secrets.openaiApiKey=sk-...
 ```
 
