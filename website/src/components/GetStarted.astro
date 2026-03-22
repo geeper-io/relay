@@ -29,15 +29,10 @@
         </div>
 
         <div class="mt-6 rounded-xl bg-slate-950 border border-slate-800 p-4 font-mono text-xs leading-relaxed flex-1">
-          <div class="text-slate-500 mb-2"># 1. Add Bitnami for subcharts</div>
-          <div class="text-slate-300">helm repo add bitnami \</div>
-          <div class="text-slate-300 pl-4">https://charts.bitnami.com/bitnami</div>
-
-          <div class="mt-3 text-slate-500"># 2. Fetch chart dependencies</div>
-          <div class="text-slate-300">helm dependency build ./helm/relay</div>
-
-          <div class="mt-3 text-slate-500"># 3. Install (master key auto-generated)</div>
-          <div class="text-slate-300">helm install relay ./helm/relay \</div>
+          <div class="text-slate-500 mb-2"># Install from OCI registry (no repo add needed)</div>
+          <div class="text-slate-300">helm install relay \</div>
+          <div class="text-slate-300 pl-4">oci://ghcr.io/geeper-io/charts/relay \</div>
+          <div class="text-slate-300 pl-4"><span class="text-yellow-400">--version</span> <span style="color:#ce9178">&lt;version&gt;</span> \</div>
           <div class="text-slate-300 pl-4"><span class="text-yellow-400">--set</span> secrets.openaiApiKey=<span style="color:#ce9178">$OPENAI_KEY</span> \</div>
           <div class="text-slate-300 pl-4"><span class="text-yellow-400">--set</span> ingress.enabled=true \</div>
           <div class="text-slate-300 pl-4"><span class="text-yellow-400">--set</span> ingress.hosts[0].host=<span style="color:#ce9178">proxy.internal</span></div>
