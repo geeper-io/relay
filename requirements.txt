@@ -6,7 +6,7 @@ pydantic-settings>=2.2.0
 pyyaml>=6.0.1
 
 # LLM
-litellm>=1.60.0
+litellm==1.82.2
 langfuse>=2.59.7,<3.0.0  # optional analytics — only used when ANALYTICS__ENABLED=true; litellm requires 2.x
 
 # PII
