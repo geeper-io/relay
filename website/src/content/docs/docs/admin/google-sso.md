@@ -69,12 +69,13 @@ This is **stateless** — no server-side session storage is required. It works c
 ## Key management
 
 - Each login creates a **new** key named `sso` — it does not replace the previous one
-- Old keys remain valid unless deleted via the admin API
+- SSO keys receive the default `chat` scope and no RAG repository access
+- Existing keys remain valid until deactivated in the database; key revocation endpoints are not implemented yet
 - The key is displayed once in the callback HTML page — users should save it immediately
 
 ## Disabling
 
-OAuth is disabled automatically when `GOOGLE_CLIENT_ID` is empty. The `/auth/login` endpoint returns 404.
+OAuth is disabled automatically when `GOOGLE_CLIENT_ID` is empty. The `/auth/login` endpoint returns 501.
 
 ## Restricting to a specific domain
 

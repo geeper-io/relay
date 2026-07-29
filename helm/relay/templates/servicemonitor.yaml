@@ -20,6 +20,13 @@ spec:
       path: /metrics
       interval: {{ .Values.prometheus.serviceMonitor.interval }}
       scrapeTimeout: {{ .Values.prometheus.serviceMonitor.scrapeTimeout }}
+      {{- if .Values.config.metricsRequireAuth }}
+      authorization:
+        type: Bearer
+        credentials:
+          name: {{ include "relay.masterKeySecretName" . }}
+          key: PROXY_MASTER_KEY
+      {{- end }}
   namespaceSelector:
     matchNames:
       - {{ .Release.Namespace }}

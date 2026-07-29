@@ -89,7 +89,7 @@ from openai import OpenAI
 
 client = OpenAI(
     base_url="https://proxy.internal/v1",
-    api_key="llmp_...",
+    api_key="gr-...",
 )
 
 # Non-streaming

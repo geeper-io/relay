@@ -28,7 +28,7 @@ const features = [
     icon: "database",
     title: "RAG Integration",
     description:
-      "Automatic context injection from your ChromaDB knowledge base. AST-aware code chunking for 15+ languages. Scope retrieval to a specific repo with X-Relay-Repo.",
+      "ACL-aware context injection from ChromaDB. API-key scopes authorize repositories; X-Relay-Repo only narrows access. AST-aware code chunking for 15+ languages.",
     badge: "Knowledge",
     badgeColor: "emerald",
   },
@@ -60,7 +60,7 @@ const features = [
     icon: "users",
     title: "Team Management",
     description:
-      "Multi-team support with per-team API keys and rate limits. Google OAuth SSO creates keys automatically on first login.",
+      "Scoped, expiring API keys; atomic user/team minute and daily budgets; secure-by-default BYOK, metrics, docs, and CORS settings.",
     badge: "Enterprise",
     badgeColor: "pink",
   },

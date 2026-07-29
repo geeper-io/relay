@@ -13,8 +13,8 @@ curl -X POST "http://localhost:8000/internal/teams?name=engineering" \
 curl -X POST "http://localhost:8000/internal/users?external_id=bob@company.com&team_id=<team-id>" \
   -H "Authorization: Bearer $MASTER_KEY"
 
-# Issue an API key
-curl -X POST "http://localhost:8000/internal/api-keys?user_id=<user-id>&name=laptop" \
+# Issue a scoped API key with an expiry and access to one RAG repository
+curl -X POST "http://localhost:8000/internal/api-keys?user_id=<user-id>&name=laptop&scopes=chat&scopes=rag%3Arepo%3Amyorg%2Fbackend&expires_at=2026-12-31T23%3A59%3A59Z" \
   -H "Authorization: Bearer $MASTER_KEY"
 # Returns: { "key": "gr-...", "key_prefix": "gr-XXXXXX", "id": "..." }
 # The raw key is shown once and not stored.
@@ -188,7 +188,9 @@ This drops and recreates the ChromaDB collection. All synced SHAs are also clear
 
 ## Prometheus metrics
 
-Metrics are available at `http://localhost:8000/metrics`.
+Metrics are available at `http://localhost:8000/metrics` and require
+`Authorization: Bearer <PROXY_MASTER_KEY>` by default. Set `server.metrics_require_auth: false` only when a trusted
+network-layer control protects the endpoint.
 
 | Metric                              | Type      | Description                                                             |
 |-------------------------------------|-----------|-------------------------------------------------------------------------|
@@ -205,4 +207,5 @@ Metrics are available at `http://localhost:8000/metrics`.
 | `relay_content_policy_blocks_total` | Counter   | Content policy rejections                                               |
 | `relay_active_requests`             | Gauge     | Requests currently in flight                                            |
 
-Prometheus scrapes `proxy:8000/metrics` every 15 seconds (configured in `docker/prometheus.yml`).
+Prometheus scrapes `proxy:8000/metrics` every 15 seconds. Configure its authorization credentials with the Relay
+master secret, or explicitly disable application-layer metrics authentication behind a protected internal network.

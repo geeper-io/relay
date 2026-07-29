@@ -3,7 +3,8 @@ title: RAG integration
 description: Automatic context injection from your knowledge base and code repositories on every request.
 ---
 
-RAG (Retrieval-Augmented Generation) runs at **stage 06**. The proxy automatically enriches requests with relevant context from your knowledge base — your application code doesn't need to change.
+RAG (Retrieval-Augmented Generation) runs at **stage 06**. The proxy enriches requests only with context authorized by
+the API key's repository scopes.
 
 ## How it works
 
@@ -42,6 +43,7 @@ rag:
   score_threshold: 0.75     # cosine distance; 0 = identical, 1 = orthogonal
                              # 0.75 is tuned for all-MiniLM-L6-v2 on mixed code + doc corpora
   embedding_model: all-MiniLM-L6-v2
+  require_acl: true
 ```
 
 ## Chunking
@@ -57,7 +59,7 @@ AST chunking means the model receives the complete body of a relevant function r
 
 ## Scoping to a repository
 
-Pass `X-Relay-Repo: owner/repo` to restrict retrieval to chunks from a specific indexed repository:
+Grant the key `rag:repo:owner/repo`, then pass `X-Relay-Repo: owner/repo` to narrow retrieval:
 
 ```bash
 curl http://localhost:8000/v1/chat/completions \
@@ -66,7 +68,14 @@ curl http://localhost:8000/v1/chat/completions \
   -d '{"model":"gpt-4o","messages":[{"role":"user","content":"How does auth work?"}]}'
 ```
 
-Without this header all indexed content is searched across all sources.
+The header is not an authorization mechanism. If the named repository is absent from the key's scopes, Relay returns
+403. Without the header, Relay searches only repositories authorized by `rag:repo:*` scopes. A key with `rag:*` may
+search all indexed repositories; a key without RAG scopes receives no knowledge-base context.
+
+:::caution
+Keep `require_acl: true` in shared deployments. Disabling it restores unrestricted collection-wide retrieval for
+compatibility with trusted single-tenant environments.
+:::
 
 ## Ingesting content
 

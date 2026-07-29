@@ -40,6 +40,36 @@ AZURE_OPENAI_API_KEY=...
 AZURE_OPENAI_ENDPOINT=https://your-deployment.openai.azure.com
 ```
 
+## Security defaults and API-key scopes
+
+Relay starts with provider-key passthrough disabled and API documentation disabled. `/metrics` requires the master key,
+and CORS is disabled unless explicit origins are configured:
+
+```yaml
+server:
+  allow_passthrough_keys: false
+  expose_docs: false
+  metrics_require_auth: true
+  cors_allowed_origins:
+    - https://ai-portal.example.com
+```
+
+Set a strong `PROXY_MASTER_KEY`; startup fails for missing or known placeholder values. Relay API keys support these
+scopes:
+
+- `chat` — `/v1/chat/completions`, `/v1/messages`, and `/v1/models`
+- `embeddings` — `/v1/embeddings`
+- `rag:repo:owner/name` — retrieve from one repository
+- `rag:*` — retrieve from any indexed repository
+- `*` — all API capabilities
+
+Scopes and an optional expiry can be assigned when creating a key:
+
+```bash
+curl -X POST 'https://relay.internal/internal/api-keys?user_id=USER_ID&scopes=chat&scopes=rag%3Arepo%3Amyorg%2Fbackend&expires_at=2026-12-31T23%3A59%3A59Z' \
+  -H "Authorization: Bearer $PROXY_MASTER_KEY"
+```
+
 ## PII scrubbing
 
 ```yaml
@@ -81,6 +111,7 @@ rag:
   score_threshold: 0.75             # cosine distance; 0 = identical, 1 = orthogonal
                                     # 0.75 is tuned for all-MiniLM-L6-v2 on mixed code + doc corpora
   embedding_model: "all-MiniLM-L6-v2"   # runs locally, no API key needed
+  require_acl: true                       # derive repository filters from API-key scopes
 ```
 
 Supported file formats: `.txt`, `.md`, `.rst` (word-based chunking) and `.py`, `.js`, `.ts`, `.go`, `.rb`, `.java`,
@@ -98,7 +129,9 @@ curl -X POST http://localhost:8000/internal/kb/upload \
 
 **Scoping queries to a repository:**
 
-Pass `X-Relay-Repo: owner/repo` in any chat request to restrict RAG retrieval to chunks from that repo only:
+Grant the API key `rag:repo:owner/repo`, then pass `X-Relay-Repo: owner/repo` to narrow retrieval. The header never
+grants access: Relay rejects repositories absent from the authenticated key's scopes. Without the header, retrieval
+searches only the repositories authorized by the key. Keys without RAG scopes receive no knowledge-base context.
 
 ```bash
 curl http://localhost:8000/v1/chat/completions \
@@ -209,8 +242,8 @@ git diff | jq -Rs '{
 
 1. **PII scrubbing** — messages containing `diff --git` or a unified hunk header (`@@ -N,N +N,N @@`) skip scrubbing
    entirely; identifiers and class names in diffs produce too many false positives.
-2. **RAG** — the diff text is used as the retrieval query. If `X-Relay-Repo` is set, only chunks from that repo are
-   searched. The top-K most similar functions, classes, and docs are prepended to the request as context.
+2. **RAG** — the diff is the retrieval query. API-key scopes authorize repositories; `X-Relay-Repo` can narrow that
+   authorized set but cannot expand it. The top-K matching functions, classes, and docs are prepended as context.
 3. **LLM call** — the model receives the diff plus the retrieved context and returns a review grounded in your actual
    codebase rather than generic advice.
 
@@ -226,10 +259,14 @@ rate_limiting:
     tokens_per_day: 1000000
 ```
 
-Per-user overrides are set on the `User` DB record (`rpm_limit`, `tpm_limit`). Teams have a shared TPM bucket (default:
-5× the per-user limit).
+Per-user overrides are set on the `User` DB record (`rpm_limit`, `tpm_limit`). Team TPM and daily limits come from the
+`Team` record. User and team minute/day checks are performed atomically. The memory backend is process-local; the Redis
+backend uses one atomic Lua operation and is required for multiple workers or replicas.
 
-For multi-worker deployments set `backend: "redis"` and provide `REDIS_URL`.
+Relay reserves prompt tokens before the provider call, then reconciles actual prompt and completion tokens after the
+response, including streams. Completion overages block subsequent requests.
+
+For multi-worker deployments set `backend: "redis"` and provide `RATE_LIMITING__REDIS_URL`.
 
 ## Response caching
 

@@ -8,7 +8,7 @@ from sqlalchemy import Integer, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.engine import get_engine, get_session_factory
-from app.db.models import UsageRecord
+from app.db.models import AuditLog, UsageRecord
 
 # ── Write ─────────────────────────────────────────────────────────────────────
 
@@ -28,6 +28,7 @@ async def record_usage(
     pii_entities_scrubbed: int = 0,
     status: str = "success",
     error_code: str | None = None,
+    audit_metadata: dict | None = None,
 ) -> UsageRecord:
     async with get_session_factory()() as db:
         record = UsageRecord(
@@ -48,6 +49,25 @@ async def record_usage(
             error_code=error_code,
         )
         db.add(record)
+        db.add(
+            AuditLog(
+                id=str(uuid.uuid4()),
+                request_id=request_id,
+                user_id=user_id,
+                action="llm.request",
+                resource=model,
+                metadata_={
+                    "team_id": team_id,
+                    "status": status,
+                    "error_code": error_code,
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "rag_used": was_rag_used,
+                    "pii_entities_scrubbed": pii_entities_scrubbed,
+                    **(audit_metadata or {}),
+                },
+            )
+        )
         await db.commit()
         return record
 

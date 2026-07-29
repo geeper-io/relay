@@ -8,7 +8,7 @@ Relay can index your source repositories and inject relevant context whenever yo
 ## How it works
 
 1. Relay syncs a repository into ChromaDB — each file is chunked by AST (one chunk per top-level function/class)
-2. You send a diff as a chat message with `X-Relay-Repo: owner/repo`
+2. You issue a key with `chat` and `rag:repo:owner/repo`, then send a diff with `X-Relay-Repo: owner/repo`
 3. Relay retrieves the most semantically similar chunks from that repo and prepends them as context
 4. The model reviews the diff with knowledge of your conventions, not just the changed lines
 
@@ -35,7 +35,15 @@ code_review:
       - myorg/backend
 ```
 
-### 2. Send a diff for review
+### 2. Issue an authorized key
+
+```bash
+curl -X POST \
+  'http://localhost:8000/internal/api-keys?user_id=<user-uuid>&name=reviewer&scopes=chat&scopes=rag%3Arepo%3Amyorg%2Fbackend' \
+  -H "Authorization: Bearer $PROXY_MASTER_KEY"
+```
+
+### 3. Send a diff for review
 
 ```bash
 git diff | jq -Rs '{
@@ -48,7 +56,8 @@ git diff | jq -Rs '{
      -d @- | jq -r '.choices[0].message.content'
 ```
 
-The `X-Relay-Repo` header scopes retrieval to that repository only. Without it, all indexed content is searched.
+The header narrows retrieval but cannot grant repository access. Without it, retrieval spans only the repositories in
+the authenticated key's RAG scopes.
 
 ## What the model receives
 
@@ -87,7 +96,7 @@ diff --git a/auth/middleware.go b/auth/middleware.go
 | Stage | Behaviour |
 |---|---|
 | PII scrubbing | Diffs bypass scrubbing — identifiers and class names produce too many false positives |
-| RAG | The diff text is the retrieval query; `X-Relay-Repo` scopes results to the named repo |
+| RAG | The diff is the retrieval query; authenticated scopes authorize repositories and `X-Relay-Repo` narrows them |
 | LLM call | Model receives diff + retrieved context and returns a review grounded in your codebase |
 
 ## Incremental sync

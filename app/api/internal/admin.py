@@ -120,11 +120,15 @@ async def create_user_endpoint(
 async def create_api_key_endpoint(
     user_id: str,
     name: str = "default",
+    scopes: list[str] | None = None,
+    expires_at: datetime | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    raw_key, api_key = await create_api_key(db, user_id=user_id, name=name)
+    raw_key, api_key = await create_api_key(db, user_id=user_id, name=name, scopes=scopes, expires_at=expires_at)
     return {
         "key": raw_key,  # shown once
         "key_prefix": api_key.key_prefix,
         "id": api_key.id,
+        "scopes": api_key.scopes,
+        "expires_at": api_key.expires_at,
     }

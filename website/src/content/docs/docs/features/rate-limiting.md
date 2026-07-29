@@ -1,11 +1,11 @@
 ---
 title: Rate limiting
-description: Token-bucket rate limiting per user and per team with memory and Redis backends.
+description: Atomic minute and daily budgets per user and team with memory and Redis backends.
 ---
 
 ## How it works
 
-Geeper Relay uses a **token-bucket** algorithm. Each user has three independent buckets:
+Relay checks five limits as one admission decision. Each user has:
 
 | Bucket | Config key | Default |
 |---|---|---|
@@ -20,7 +20,9 @@ Each team can optionally have:
 | Team tokens per minute | `POST /internal/teams` → `tpm_limit` |
 | Team tokens per day | `POST /internal/teams` → `daily_token_limit` |
 
-A request consumes from both the user bucket **and** the team bucket. Either one can reject the request.
+A request consumes from both user and team budgets. Either can reject it. Prompt tokens are reserved before the
+provider call; actual prompt plus completion usage is reconciled afterward, including streamed responses. An overage
+therefore blocks subsequent requests instead of letting long completions escape accounting.
 
 ## Configuration
 
@@ -38,7 +40,7 @@ rate_limiting:
 
 ### Memory (default)
 
-Buckets are stored in-process. Fast (no network round-trip), but:
+Minute limits use in-process token buckets and daily usage uses UTC-day counters. This is fast, but:
 - Not shared across uvicorn workers within the same process (rare issue with `--workers > 1`)
 - Not shared across replicas — each pod enforces limits independently
 
@@ -51,7 +53,8 @@ rate_limiting:
   backend: redis
 ```
 
-Buckets are stored in Redis with atomic Lua scripts. Shared across all workers and all replicas.
+Redis uses fixed minute/UTC-day keys. One Lua script checks and increments user RPM, user TPM/day, and team TPM/day
+atomically, so a rejected request does not partially consume another budget. State is shared by every worker and pod.
 
 :::tip
 When `redis.enabled: true` in the Helm chart, the proxy automatically switches to the Redis backend. No manual config change needed.
@@ -68,16 +71,12 @@ RATE_LIMITING__REDIS_URL=redis://user:pass@redis.internal:6379
 Override limits for a specific team via the admin API:
 
 ```bash
-curl -X POST http://localhost:8000/internal/teams \
-  -H "Authorization: Bearer $PROXY_MASTER_KEY" \
-  -d '{
-    "name": "data-science",
-    "tpm_limit": 500000,
-    "daily_token_limit": 10000000
-  }'
+curl -X POST \
+  'http://localhost:8000/internal/teams?name=data-science&tpm_limit=500000&daily_token_limit=10000000' \
+  -H "Authorization: Bearer $PROXY_MASTER_KEY"
 ```
 
-The `tpm_limit` and `daily_token_limit` fields are optional — omit to use the global defaults for that team's users.
+The team values are optional. Without them, Relay uses five times the global per-user TPM/day defaults.
 
 ## Rate limit responses
 
@@ -102,7 +101,8 @@ Content-Type: application/json
 ## Prometheus metrics
 
 ```
-relay_rate_limit_hits_total{limit_type="requests_per_minute"} 3
-relay_rate_limit_hits_total{limit_type="tokens_per_minute"} 12
-relay_rate_limit_hits_total{limit_type="tokens_per_day"} 1
+relay_rate_limit_hits_total{limit_type="general"} 16
 ```
+
+The HTTP response identifies the exhausted budget; the current Prometheus counter aggregates rate-limit rejections
+under `limit_type="general"`.

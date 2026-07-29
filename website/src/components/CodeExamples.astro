@@ -16,7 +16,7 @@ const examples: Record<string, { lang: Parameters<typeof Code>[0]["lang"]; code:
 # Point to your proxy — zero other changes needed
 client = OpenAI(
     base_url="https://proxy.internal/v1",
-    api_key="your-team-api-key",
+    api_key="gr-your-relay-key",
 )
 
 # Standard completion — works exactly like OpenAI
@@ -42,7 +42,7 @@ for chunk in stream:
 # Use ANTHROPIC_BASE_URL env var or pass base_url directly
 client = anthropic.Anthropic(
     base_url="https://proxy.internal",
-    api_key="your-team-api-key",
+    auth_token="gr-your-relay-key",
 )
 
 # Native Anthropic Messages API format
@@ -66,16 +66,12 @@ with client.messages.stream(
     lang: "bash",
     code: `# Option 1: Environment variables (recommended)
 export ANTHROPIC_BASE_URL="https://proxy.internal"
-export ANTHROPIC_API_KEY="your-team-api-key"
+export ANTHROPIC_AUTH_TOKEN="gr-your-relay-key"
 claude
 
-# Option 2: Command-line flags
-claude --api-url https://proxy.internal \\
-       --api-key your-team-api-key
-
-# Option 3: Add to your shell profile
+# Option 2: Add to your shell profile
 echo 'export ANTHROPIC_BASE_URL="https://proxy.internal"' >> ~/.zshrc
-echo 'export ANTHROPIC_API_KEY="your-team-api-key"' >> ~/.zshrc
+echo 'export ANTHROPIC_AUTH_TOKEN="gr-your-relay-key"' >> ~/.zshrc
 
 # The proxy enforces your team's:
 #  • Rate limits (requests/min, tokens/day)
@@ -87,20 +83,16 @@ echo 'export ANTHROPIC_API_KEY="your-team-api-key"' >> ~/.zshrc
     lang: "bash",
     code: `# OpenAI-compatible endpoint
 curl https://proxy.internal/v1/chat/completions \\
-  -H "Authorization: Bearer your-team-api-key" \\
+  -H "Authorization: Bearer gr-your-relay-key" \\
   -H "Content-Type: application/json" \\
   -d '{"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}'
 
 # Anthropic Messages API endpoint
 curl https://proxy.internal/v1/messages \\
-  -H "x-api-key: your-team-api-key" \\
+  -H "Authorization: Bearer gr-your-relay-key" \\
   -H "anthropic-version: 2023-06-01" \\
   -H "Content-Type: application/json" \\
-  -d '{"model":"claude-3-5-sonnet-20241022","max_tokens":1024,"messages":[{"role":"user","content":"Hello"}]}'
-
-# List your API keys
-curl https://proxy.internal/internal/api-keys \\
-  -H "Authorization: Bearer your-team-api-key"`,
+  -d '{"model":"claude-3-5-sonnet-20241022","max_tokens":1024,"messages":[{"role":"user","content":"Hello"}]}'`,
   },
 };
 ---

@@ -56,9 +56,10 @@ POST /v1/embeddings
 }
 ```
 
-## Authentication
+## Authentication and accounting
 
-Both Relay-issued keys (`gr-...`) and passthrough keys work:
+Relay-issued keys require the `embeddings` scope. Requests participate in user/team minute and daily budgets, and
+usage plus its audit event is committed before a successful response is returned.
 
 ```bash
 # Relay-issued key — uses server-configured OpenAI/Anthropic credentials
@@ -67,7 +68,7 @@ curl https://relay.company.com/v1/embeddings \
   -H "Content-Type: application/json" \
   -d '{"model": "text-embedding-3-small", "input": "Hello world"}'
 
-# Passthrough — your own OpenAI key, routed through Relay middleware
+# Optional passthrough — works only when allow_passthrough_keys is explicitly enabled
 curl https://relay.company.com/v1/embeddings \
   -H "Authorization: Bearer sk-..." \
   -H "Content-Type: application/json" \

@@ -73,10 +73,18 @@ Geeper Relay has been deployed.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   A ServiceMonitor has been created. Prometheus will scrape
   /metrics every {{ .Values.prometheus.serviceMonitor.interval }}.
+  {{- if .Values.config.metricsRequireAuth }}
+  The ServiceMonitor authenticates with the Relay master-key Secret.
+  {{- end }}
 {{- end }}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   DOCS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{{- if .Values.config.exposeDocs }}
   Swagger UI:   http://localhost:8000/docs
   ReDoc:        http://localhost:8000/redoc
+{{- else }}
+  API documentation is disabled by default. Enable it with:
+    --set config.exposeDocs=true
+{{- end }}

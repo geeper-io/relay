@@ -16,31 +16,32 @@ cd relay
 cp .env.example .env
 ```
 
-Edit `.env` and set at minimum one provider key:
+Edit `.env`, set at least one provider key, and generate a master key:
 
 ```bash
 # .env
 OPENAI_API_KEY=sk-...          # OpenAI
 ANTHROPIC_API_KEY=sk-ant-...   # Anthropic (optional)
 
-# Auto-generated on first start if left empty:
-PROXY_MASTER_KEY=
+# Generate with: openssl rand -hex 32
+PROXY_MASTER_KEY=<paste-generated-value>
 ```
 
-:::tip
-Leave `PROXY_MASTER_KEY` empty on first run. The proxy generates a random 32-character key and prints it to the logs. Copy it out and set it permanently in `.env`.
+:::caution
+Docker Compose requires `PROXY_MASTER_KEY`. Startup rejects missing and known placeholder values. Helm installations
+still auto-generate and preserve this key.
 :::
 
 ## 2. Start the stack
 
 ```bash
-docker compose up -d
+docker compose -f docker/docker-compose.yml up -d
 ```
 
 This starts:
 - `proxy` — the Geeper Relay on port 8000
 - `postgres` — PostgreSQL 16 for API keys, users, usage records
-- `chromadb` — vector store for RAG (optional, controlled by `config.yaml`)
+- embedded ChromaDB storage — vector store for RAG (optional, controlled by `config.yaml`)
 
 ## 3. Check it's running
 
@@ -51,24 +52,27 @@ curl http://localhost:8000/healthz
 
 ## 4. Create your first API key
 
-Use the master key (from `.env` or from the startup logs) to create a user key:
+Create a user, then issue a scoped key. These admin endpoints accept query parameters:
 
 ```bash
-curl -X POST http://localhost:8000/internal/api-keys \
-  -H "Authorization: Bearer $PROXY_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "dev", "user_id": "alice"}'
+USER_ID=$(curl -s -X POST \
+  'http://localhost:8000/internal/users?external_id=alice%40example.com' \
+  -H "Authorization: Bearer $PROXY_MASTER_KEY" | jq -r .id)
+
+curl -X POST \
+  "http://localhost:8000/internal/api-keys?user_id=$USER_ID&name=dev&scopes=chat" \
+  -H "Authorization: Bearer $PROXY_MASTER_KEY"
 ```
 
 Response:
 
 ```json
 {
-  "id": "ak_01j...",
-  "name": "dev",
-  "key": "llmp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-  "key_prefix": "llmp_xxxx",
-  "user_id": "alice"
+  "id": "<uuid>",
+  "key": "gr-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "key_prefix": "gr-xxxxxxxxx",
+  "scopes": ["chat"],
+  "expires_at": null
 }
 ```
 
@@ -79,7 +83,7 @@ The `key` field is shown **once**. Store it securely — it cannot be retrieved 
 ## 5. Make your first request
 
 ```bash
-export API_KEY=llmp_xxxx...   # the key you just created
+export API_KEY=gr-xxxx...   # the key you just created
 
 curl http://localhost:8000/v1/chat/completions \
   -H "Authorization: Bearer $API_KEY" \
@@ -97,7 +101,7 @@ from openai import OpenAI
 
 client = OpenAI(
     base_url="http://localhost:8000/v1",
-    api_key="llmp_xxxx...",
+    api_key="gr-xxxx...",
 )
 
 response = client.chat.completions.create(

@@ -63,9 +63,10 @@ Client request
 
 ### 01 — Authentication
 
-- Extracts API key from `Authorization: Bearer` or `x-api-key` header
+- Extracts the API key from `Authorization: Bearer`
 - Looks up key hash in the database (SHA-256 comparison)
 - Resolves associated user and team
+- Rejects expired or inactive keys and enforces the endpoint capability scope (`chat` or `embeddings`)
 - Attaches user/team context to the request for downstream stages
 - **Rejects with 401** if key is missing, unknown, or revoked
 
@@ -85,14 +86,18 @@ Client request
 
 ### 04 — Rate Limiting
 
-Three token buckets checked in order, any can reject:
+Five user/team limits are evaluated together; any can reject:
 
 1. **User req/min** — `rate_limiting.defaults.requests_per_minute`
 2. **User tokens/min** — `rate_limiting.defaults.tokens_per_minute`
 3. **User tokens/day** — `rate_limiting.defaults.tokens_per_day`
 4. **Team tokens/min** — team's `tpm_limit` (if team has override)
+5. **Team tokens/day** — team's `daily_token_limit`
 
 **Rejects with 429** and `Retry-After` header on any overflow.
+
+After the LLM responds, Relay reconciles actual prompt and completion tokens against the amount reserved before the
+call. This applies to regular and streaming responses.
 
 See [Rate limiting](/docs/features/rate-limiting) for bucket mechanics and Redis backend.
 
@@ -108,7 +113,8 @@ See [PII scrubbing](/docs/features/pii-scrubbing).
 ### 06 — RAG Context
 
 - Embeds the last user message with `all-MiniLM-L6-v2`
-- Queries ChromaDB for top-k chunks above `score_threshold`
+- Derives repository filters from `rag:repo:*` or `rag:*` scopes on the authenticated key
+- Queries ChromaDB only within those authorized repositories
 - Injects retrieved chunks as a prefix in the system message
 - No-op if ChromaDB is empty or if `rag.enabled: false`
 
@@ -129,7 +135,7 @@ See [RAG integration](/docs/features/rag).
 ### 09 — Metrics & Usage
 
 - Counts completion tokens from the response
-- Writes a `UsageRecord` to PostgreSQL (user, team, model, prompt tokens, completion tokens, cost, latency)
+- Commits a `UsageRecord` and corresponding `AuditLog` in one database transaction
 - Restores PII placeholders in the response content (reverse of stage 05)
 - Increments Prometheus counters
 - Stores response in cache if `cache.enabled: true` (non-streaming only)
@@ -151,4 +157,5 @@ cache:
   enabled: false
 ```
 
-Authentication and metrics recording cannot be disabled.
+Authentication cannot be disabled for Relay-issued keys. Provider-key passthrough is a separate, explicitly enabled
+BYOK mode and does not create user-attributed usage/audit records.

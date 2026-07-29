@@ -10,11 +10,12 @@ Geeper Relay exposes three groups of endpoints:
 | OpenAI-compatible inference | `/v1/chat/completions`, `/v1/embeddings`, `/v1/models` | API key |
 | Anthropic Messages API | `/v1/messages` | API key |
 | Admin | `/internal/*` | Master key |
-| Health & metrics | `/healthz`, `/readyz`, `/metrics` | None |
+| Health | `/healthz`, `/readyz` | None |
+| Metrics | `/metrics` | Master key by default |
 
 ## Authentication
 
-Relay supports two authentication modes simultaneously.
+Relay-issued keys are the secure default. Optional passthrough/BYOK can be enabled explicitly.
 
 ### Relay-issued keys
 
@@ -24,17 +25,23 @@ Keys issued by Relay start with `gr-`. Pass them in the `Authorization` header:
 Authorization: Bearer gr-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-Or, for Anthropic-format clients:
-
-```
-x-api-key: gr-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
-
 Keys are issued via the admin API (`POST /internal/api-keys`) or via Google SSO. See [First API key](/docs/getting-started/first-api-key).
+
+Keys can expire and carry capability/data scopes:
+
+| Scope | Access |
+|---|---|
+| `chat` | `/v1/chat/completions`, `/v1/messages`, `/v1/models` |
+| `embeddings` | `/v1/embeddings` |
+| `rag:repo:owner/name` | RAG retrieval from one repository |
+| `rag:*` | RAG retrieval from all repositories |
+| `*` | All API capabilities |
 
 ### Passthrough keys (bring your own)
 
-When `server.allow_passthrough_keys` is `true` (default), any key that does **not** start with `gr-` is forwarded directly to the upstream provider. The request still goes through all Relay middleware (PII scrubbing, content policy, rate limiting).
+Passthrough is disabled by default. When `server.allow_passthrough_keys` is explicitly set to `true`, a key that does
+**not** start with `gr-` is forwarded to the upstream provider. It receives `chat` and `embeddings` capability but no
+RAG scopes, and it is not written to Relay's user-attributed usage/audit tables.
 
 This lets employees point their existing SDK at Relay without being issued a separate key:
 
@@ -45,11 +52,12 @@ export ANTHROPIC_BASE_URL=https://relay.company.com
 
 Works with any provider — Anthropic, OpenAI, Azure, Gemini, etc. The upstream provider authenticates the key; Relay never validates it.
 
-To restrict access to Relay-issued keys only, set `allow_passthrough_keys: false` in config.
+Only enable this for trusted BYOK deployments where bypassing Relay identity and persistent accounting is acceptable.
 
 ### Master key (admin endpoints)
 
-The `PROXY_MASTER_KEY` grants full admin access. Use it only for automation and key provisioning — never distribute it to end users.
+The `PROXY_MASTER_KEY` grants full admin access and protects `/metrics` by default. Use it only for automation,
+monitoring, and key provisioning—never distribute it to end users. Startup rejects missing and known placeholder keys.
 
 ```
 Authorization: Bearer <PROXY_MASTER_KEY>

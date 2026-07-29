@@ -12,50 +12,36 @@ All admin endpoints require the `PROXY_MASTER_KEY` in the `Authorization` header
 ### 1. Create a team (optional)
 
 ```bash
-curl -X POST http://localhost:8000/internal/teams \
-  -H "Authorization: Bearer $PROXY_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "engineering",
-    "tpm_limit": 200000,
-    "daily_token_limit": 5000000
-  }'
+curl -X POST \
+  'http://localhost:8000/internal/teams?name=engineering&tpm_limit=200000&daily_token_limit=5000000' \
+  -H "Authorization: Bearer $PROXY_MASTER_KEY"
 ```
 
 ### 2. Create a user
 
 ```bash
-curl -X POST http://localhost:8000/internal/users \
-  -H "Authorization: Bearer $PROXY_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "external_id": "alice@example.com",
-    "team_id": "team_01j..."
-  }'
+curl -X POST \
+  'http://localhost:8000/internal/users?external_id=alice%40example.com&team_id=<team-uuid>' \
+  -H "Authorization: Bearer $PROXY_MASTER_KEY"
 ```
 
 ### 3. Issue an API key
 
 ```bash
-curl -X POST http://localhost:8000/internal/api-keys \
-  -H "Authorization: Bearer $PROXY_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "dev-laptop",
-    "user_id": "user_01j..."
-  }'
+curl -X POST \
+  'http://localhost:8000/internal/api-keys?user_id=<user-uuid>&name=dev-laptop&scopes=chat&scopes=embeddings&scopes=rag%3Arepo%3Amyorg%2Fbackend&expires_at=2026-12-31T23%3A59%3A59Z' \
+  -H "Authorization: Bearer $PROXY_MASTER_KEY"
 ```
 
 Response:
 
 ```json
 {
-  "id": "ak_01j...",
-  "name": "dev-laptop",
+  "id": "<key-uuid>",
   "key": "gr-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-  "key_prefix": "gr-xxxx",
-  "user_id": "user_01j...",
-  "created_at": "2025-01-01T00:00:00Z"
+  "key_prefix": "gr-xxxxxxxxx",
+  "scopes": ["chat", "embeddings", "rag:repo:myorg/backend"],
+  "expires_at": "2026-12-31T23:59:59Z"
 }
 ```
 
@@ -63,14 +49,7 @@ Response:
 The full `key` is returned **once**. It is stored as a SHA-256 hash — it cannot be retrieved again. Save it immediately.
 :::
 
-### List existing keys
-
-```bash
-curl http://localhost:8000/internal/api-keys \
-  -H "Authorization: Bearer $PROXY_MASTER_KEY"
-```
-
-Returns key metadata (prefix, name, user, created date) — never the full key.
+`chat` is the default when `scopes` is omitted. RAG is fail-closed: add `rag:repo:owner/name` or `rag:*` explicitly.
 
 ## Option B: Google SSO
 
@@ -103,13 +82,14 @@ secrets:
 3. On approval, redirected back to `/auth/callback`
 4. Proxy verifies the HMAC-signed state parameter, exchanges the code for a Google token
 5. User's Google account email is used to upsert the user in the database
-6. A new API key named `sso` is created and displayed in the browser
+6. A new chat-scoped API key named `sso` is created and displayed in the browser
 
 The key is shown once in the callback page — users should copy it to their `.env` or shell profile.
 
 ### Subsequent logins
 
-Each login creates a new key. Old keys remain valid unless deleted. Users can see their key prefix in the callback page to identify which key is current.
+Each login creates a new key. Existing keys remain valid until an administrator deactivates them directly in the
+database or they expire; the current API does not expose key revocation endpoints yet.
 
 :::tip
 To share the proxy with a team, send them to `/auth/login`. They each get their own key tied to their Google identity, billed to their user in the usage reports.

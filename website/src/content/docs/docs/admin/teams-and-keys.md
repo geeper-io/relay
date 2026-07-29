@@ -14,14 +14,9 @@ Authorization: Bearer <PROXY_MASTER_KEY>
 ### Create a team
 
 ```bash
-curl -X POST http://localhost:8000/internal/teams \
-  -H "Authorization: Bearer $PROXY_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "engineering",
-    "tpm_limit": 200000,
-    "daily_token_limit": 5000000
-  }'
+curl -X POST \
+  'http://localhost:8000/internal/teams?name=engineering&tpm_limit=200000&daily_token_limit=5000000' \
+  -H "Authorization: Bearer $PROXY_MASTER_KEY"
 ```
 
 | Field | Type | Required | Description |
@@ -30,25 +25,14 @@ curl -X POST http://localhost:8000/internal/teams \
 | `tpm_limit` | int | no | Team-wide tokens per minute limit (overrides global default) |
 | `daily_token_limit` | int | no | Team-wide tokens per day limit |
 
-### List teams
-
-```bash
-curl http://localhost:8000/internal/teams \
-  -H "Authorization: Bearer $PROXY_MASTER_KEY"
-```
-
 ## Users
 
 ### Create a user
 
 ```bash
-curl -X POST http://localhost:8000/internal/users \
-  -H "Authorization: Bearer $PROXY_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "external_id": "alice@example.com",
-    "team_id": "team_01j..."
-  }'
+curl -X POST \
+  'http://localhost:8000/internal/users?external_id=alice%40example.com&team_id=<team-uuid>' \
+  -H "Authorization: Bearer $PROXY_MASTER_KEY"
 ```
 
 | Field | Type | Required | Description |
@@ -56,10 +40,10 @@ curl -X POST http://localhost:8000/internal/users \
 | `external_id` | string | yes | Your identifier for the user (email, employee ID, etc.) |
 | `team_id` | string | no | Associate user with a team |
 
-### List users
+### Look up a user
 
 ```bash
-curl http://localhost:8000/internal/users \
+curl 'http://localhost:8000/internal/users?external_id=alice%40example.com' \
   -H "Authorization: Bearer $PROXY_MASTER_KEY"
 ```
 
@@ -68,25 +52,20 @@ curl http://localhost:8000/internal/users \
 ### Create a key
 
 ```bash
-curl -X POST http://localhost:8000/internal/api-keys \
-  -H "Authorization: Bearer $PROXY_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "laptop-dev",
-    "user_id": "user_01j..."
-  }'
+curl -X POST \
+  'http://localhost:8000/internal/api-keys?user_id=<user-uuid>&name=laptop-dev&scopes=chat&scopes=rag%3Arepo%3Amyorg%2Fbackend&expires_at=2026-12-31T23%3A59%3A59Z' \
+  -H "Authorization: Bearer $PROXY_MASTER_KEY"
 ```
 
 Response:
 
 ```json
 {
-  "id": "ak_01j...",
-  "name": "laptop-dev",
-  "key": "llmp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-  "key_prefix": "llmp_xxxx",
-  "user_id": "user_01j...",
-  "created_at": "2025-01-01T00:00:00Z"
+  "id": "<key-uuid>",
+  "key": "gr-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "key_prefix": "gr-xxxxxxxxx",
+  "scopes": ["chat", "rag:repo:myorg/backend"],
+  "expires_at": "2026-12-31T23:59:59Z"
 }
 ```
 
@@ -94,32 +73,17 @@ Response:
 The `key` is shown **once**. Keys are stored as SHA-256 hashes — the original cannot be recovered.
 :::
 
-### List keys
+Supported scopes are `chat`, `embeddings`, `rag:repo:owner/name`, `rag:*`, and the global `*`. If no scopes are
+provided, the key receives `chat` only. The optional `expires_at` is checked both during database lookup and on cached
+identities.
 
-```bash
-curl http://localhost:8000/internal/api-keys \
-  -H "Authorization: Bearer $PROXY_MASTER_KEY"
-```
-
-Returns key metadata only (prefix, name, user, dates) — never the full key value.
-
-### Rotate a key
-
-There is no dedicated rotation endpoint. To rotate:
-
-1. Create a new key for the same user
-2. Distribute the new key to the user
-3. Delete the old key once confirmed
-
-### Delete a key
-
-```bash
-curl -X DELETE http://localhost:8000/internal/api-keys/ak_01j... \
-  -H "Authorization: Bearer $PROXY_MASTER_KEY"
-```
+The current API creates keys but does not yet list, revoke, or rotate them. Rotate by issuing a replacement and then
+deactivating the old `api_keys` row (`is_active=false`) through your administrative database workflow.
 
 ## Security model
 
 - Keys are stored as SHA-256 hashes — a database compromise does not expose usable keys
+- Expired and inactive keys are rejected; capability and RAG repository scopes are enforced per request
 - The master key (`PROXY_MASTER_KEY`) is the only secret with admin access — rotate it by updating the Kubernetes Secret and restarting pods
-- Rate limits are enforced at the user level, aggregated up to team level — a single user cannot exhaust team quota alone (unless they are the only user in the team)
+- User and team minute/day budgets are enforced together; any user can consume the shared team quota, so size it for
+  aggregate team traffic

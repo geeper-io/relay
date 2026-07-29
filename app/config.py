@@ -42,7 +42,10 @@ class Settings(BaseSettings):
     server__port: int = 8000
     server__workers: int = 4
     server__log_level: str = "info"
-    server__allow_passthrough_keys: bool = True
+    server__allow_passthrough_keys: bool = False
+    server__expose_docs: bool = False
+    server__metrics_require_auth: bool = True
+    server__cors_allowed_origins: list[str] = []
 
     # LLM
     llm__default_model: str = "gpt-4o"
@@ -76,6 +79,7 @@ class Settings(BaseSettings):
     rag__embedding_model: str = "all-MiniLM-L6-v2"
     rag__context_prefix: str = "Relevant internal documentation:\n\n"
     rag__context_separator: str = "\n\n---\n\n"
+    rag__require_acl: bool = True
     chroma_persist_dir: str = "./chroma_data"
     chroma_collection_name: str = "internal_kb"
     chroma_host: str = ""  # if set, use HTTP client (multi-pod); otherwise use local PersistentClient
@@ -167,6 +171,18 @@ class Settings(BaseSettings):
         return self.server__allow_passthrough_keys
 
     @property
+    def expose_docs(self) -> bool:
+        return self.server__expose_docs
+
+    @property
+    def metrics_require_auth(self) -> bool:
+        return self.server__metrics_require_auth
+
+    @property
+    def cors_allowed_origins(self) -> list[str]:
+        return self.server__cors_allowed_origins
+
+    @property
     def default_model(self) -> str:
         return self.llm__default_model
 
@@ -205,6 +221,10 @@ class Settings(BaseSettings):
     @property
     def rag_context_separator(self) -> str:
         return self.rag__context_separator
+
+    @property
+    def rag_require_acl(self) -> bool:
+        return self.rag__require_acl
 
     @property
     def pii_enabled(self) -> bool:

@@ -75,26 +75,31 @@
         <div class="mt-6 rounded-xl bg-slate-950 border border-slate-800 p-4 font-mono text-xs leading-relaxed flex-1">
           <div class="text-slate-500 mb-2"># Clone and configure</div>
           <div class="text-slate-300">git clone https://github.com/geeper-io/relay</div>
+          <div class="text-slate-300">cd relay</div>
           <div class="text-slate-300">cp .env.example .env</div>
-          <div class="text-slate-500"># edit .env with your API keys</div>
+          <div class="text-slate-500"># add provider keys and a generated PROXY_MASTER_KEY</div>
 
           <div class="mt-3 text-slate-500"># Start everything</div>
-          <div class="text-slate-300">docker compose up -d</div>
+          <div class="text-slate-300">docker compose -f docker/docker-compose.yml up -d</div>
 
           <div class="mt-3 text-slate-500"># Proxy is ready at localhost:8000</div>
           <div class="text-slate-300">curl localhost:8000/healthz</div>
           <div class="text-emerald-400"># → &#123;"status": "ok"&#125;</div>
 
-          <div class="mt-3 text-slate-500"># Create your first API key via admin</div>
-          <div class="text-slate-300">curl -X POST localhost:8000/internal/api-keys \</div>
-          <div class="text-slate-300 pl-4"><span class="text-yellow-400">-H</span> "Authorization: Bearer $MASTER_KEY" \</div>
-          <div class="text-slate-300 pl-4"><span class="text-yellow-400">-d</span> '&#123;"name":"dev","user_id":"alice"&#125;'</div>
+          <div class="mt-3 text-slate-500"># Create a user, then issue a chat-scoped key</div>
+          <div class="text-slate-300">curl -X POST </div>
+          <div class="text-slate-300 pl-4">'localhost:8000/internal/users?external_id=alice' \</div>
+          <div class="text-slate-300 pl-4"><span class="text-yellow-400">-H</span> "Authorization: Bearer $PROXY_MASTER_KEY" \</div>
+          <div class="text-slate-500 mt-1"># use the returned UUID as USER_ID</div>
+          <div class="text-slate-300">curl -X POST </div>
+          <div class="text-slate-300 pl-4">"localhost:8000/internal/api-keys?user_id=$USER_ID&amp;name=dev&amp;scopes=chat" \</div>
+          <div class="text-slate-300 pl-4"><span class="text-yellow-400">-H</span> "Authorization: Bearer $PROXY_MASTER_KEY"</div>
         </div>
 
         <div class="mt-4 space-y-2">
           <div class="flex items-center gap-2 text-xs text-slate-500">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-            SQLite by default — no external DB needed
+            PostgreSQL and Prometheus included
           </div>
           <div class="flex items-center gap-2 text-xs text-slate-500">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
@@ -102,7 +107,7 @@
           </div>
           <div class="flex items-center gap-2 text-xs text-slate-500">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-            Hot-reload config without restart
+            Secure defaults: scoped keys, protected metrics, ACL-aware RAG
           </div>
         </div>
       </div>

@@ -48,11 +48,17 @@ kubectl get secret llm-proxy-master-key -o jsonpath='{.data.PROXY_MASTER_KEY}' |
 MASTER_KEY=$(kubectl get secret llm-proxy-master-key \
   -o jsonpath='{.data.PROXY_MASTER_KEY}' | base64 -d)
 
-curl -X POST https://proxy.internal/internal/api-keys \
-  -H "Authorization: Bearer $MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "team-alpha", "user_id": "alice"}'
+USER_ID=$(curl -s -X POST \
+  'https://proxy.internal/internal/users?external_id=alice%40example.com' \
+  -H "Authorization: Bearer $MASTER_KEY" | jq -r .id)
+
+curl -X POST \
+  "https://proxy.internal/internal/api-keys?user_id=$USER_ID&name=team-alpha&scopes=chat" \
+  -H "Authorization: Bearer $MASTER_KEY"
 ```
+
+Pass repeated `scopes` and optional `expires_at` query parameters as needed; see
+[First API key](/docs/getting-started/first-api-key).
 
 ## Upgrading
 
@@ -74,6 +80,7 @@ helm upgrade relay oci://ghcr.io/geeper-io/charts/relay \
 | Secrets | `secrets.create: false` + `secrets.existingSecret` from Vault/ESO |
 | Redis | `redis.enabled: true` for multi-replica rate limiting and caching |
 | Monitoring | `prometheus.serviceMonitor.enabled: true` |
+| API docs/CORS | Keep docs off; configure explicit `config.corsAllowedOrigins` only when a browser client needs it |
 
 ## Common values
 

@@ -15,7 +15,13 @@ scrape_configs:
       - targets: ["proxy.internal:8000"]
     metrics_path: /metrics
     scrape_interval: 15s
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/relay-master-key
 ```
+
+`/metrics` requires `PROXY_MASTER_KEY` by default. Mount it as a Prometheus secret rather than placing it directly in
+the scrape configuration. The Helm `ServiceMonitor` configures this Secret reference automatically.
 
 ### Kubernetes ServiceMonitor (Prometheus Operator)
 
@@ -34,11 +40,11 @@ prometheus:
 | Metric | Type | Labels |
 |---|---|---|
 | `relay_requests_total` | Counter | `model`, `status` |
-| `relay_request_duration_seconds` | Histogram | `model` |
-| `relay_tokens_total` | Counter | `model`, `type` (prompt/completion) |
+| `relay_request_latency_seconds` | Histogram | `model`, `stream` |
+| `relay_tokens_total` | Counter | `model`, `token_type` (prompt/completion) |
 | `relay_rate_limit_hits_total` | Counter | `limit_type` |
-| `relay_cache_hits_total` | Counter | — |
-| `relay_pii_entities_total` | Counter | `entity_type` |
+| `relay_cache_hits_total` | Counter | `model` |
+| `relay_pii_entities_scrubbed_total` | Counter | — |
 | `relay_content_policy_blocks_total` | Counter | — |
 
 ## Grafana
@@ -52,17 +58,17 @@ prometheus:
 
 2. **Error rate**
    ```yaml
-   sum by (status) (rate(relay_requests_total{status!="200"}[5m]))
+   sum by (status) (rate(relay_requests_total{status!="success"}[5m]))
    ```
 
 3. **Latency p50 / p95 / p99**
    ```yaml
-   histogram_quantile(0.95, sum by (le) (rate(relay_request_duration_seconds_bucket[5m])))
+   histogram_quantile(0.95, sum by (le) (rate(relay_request_latency_seconds_bucket[5m])))
    ```
 
 4. **Token throughput**
    ```yaml
-   sum by (type) (rate(relay_tokens_total[5m]))
+   sum by (token_type) (rate(relay_tokens_total[5m]))
    ```
 
 5. **Rate limit hit rate**
@@ -77,7 +83,7 @@ prometheus:
 
 7. **PII entities scrubbed**
    ```yaml
-   sum by (entity_type) (rate(relay_pii_entities_total[5m]))
+   rate(relay_pii_entities_scrubbed_total[5m])
    ```
 
 ### Recommended alerts
@@ -87,13 +93,13 @@ groups:
   - name: llm-proxy
     rules:
       - alert: HighErrorRate
-        expr: rate(relay_requests_total{status=~"5.."}[5m]) > 0.05
+        expr: sum(rate(relay_requests_total{status="error"}[5m])) > 0.05
         for: 5m
         annotations:
           summary: "High upstream error rate"
 
       - alert: HighLatency
-        expr: histogram_quantile(0.95, sum by (le) (rate(relay_request_duration_seconds_bucket[5m]))) > 10
+        expr: histogram_quantile(0.95, sum by (le) (rate(relay_request_latency_seconds_bucket[5m]))) > 10
         for: 10m
         annotations:
           summary: "p95 latency over 10s"
@@ -164,4 +170,4 @@ Used by Kubernetes probes:
 | Endpoint | Purpose | Returns 200 when |
 |---|---|---|
 | `GET /healthz` | Liveness | App started |
-| `GET /readyz` | Readiness | DB and ChromaDB reachable |
+| `GET /readyz` | Readiness | DB, enabled ChromaDB, and configured rate-limit backend reachable |

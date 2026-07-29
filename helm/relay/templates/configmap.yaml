@@ -11,6 +11,10 @@ data:
       port: 8000
       workers: {{ .Values.config.workers }}
       log_level: {{ .Values.config.logLevel | default "info" | quote }}
+      allow_passthrough_keys: {{ .Values.config.allowPassthroughKeys }}
+      expose_docs: {{ .Values.config.exposeDocs }}
+      metrics_require_auth: {{ .Values.config.metricsRequireAuth }}
+      cors_allowed_origins: {{ toJson .Values.config.corsAllowedOrigins }}
 
     llm:
       default_model: {{ .Values.config.llm.defaultModel | quote }}
@@ -50,6 +54,7 @@ data:
       embedding_model: {{ .Values.config.rag.embeddingModel | default "all-MiniLM-L6-v2" | quote }}
       context_prefix: "Relevant internal documentation:\n\n"
       context_separator: "\n\n---\n\n"
+      require_acl: {{ .Values.config.rag.requireAcl }}
 
     pii:
       enabled: {{ .Values.config.pii.enabled }}

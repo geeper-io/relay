@@ -37,6 +37,10 @@ securityContext:
 config:
   workers: 4
   logLevel: "info"
+  allowPassthroughKeys: false
+  exposeDocs: false
+  metricsRequireAuth: true
+  corsAllowedOrigins: []
 
   llm:
     defaultModel: "gpt-4o"
@@ -56,6 +60,7 @@ config:
     topK: 5
     scoreThreshold: 0.75
     embeddingModel: "all-MiniLM-L6-v2"
+    requireAcl: true
 
   pii:
     enabled: true

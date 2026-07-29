@@ -13,7 +13,7 @@
   <g class="node c-gray">
     <rect x="170" y="56" width="340" height="56" rx="8" stroke-width="0.5"></rect>
     <text class="th" x="340" y="76" text-anchor="middle" dominant-baseline="central">01  Auth</text>
-    <text class="ts" x="340" y="96" text-anchor="middle" dominant-baseline="central">API key → user + team identity</text>
+    <text class="ts" x="340" y="96" text-anchor="middle" dominant-baseline="central">expiry + scopes → user + team identity</text>
   </g>
   <line x1="340" y1="112" x2="340" y2="130" class="arr" marker-end="url(#arrow)"></line>
 
@@ -21,7 +21,7 @@
   <g class="node c-gray">
     <rect x="170" y="132" width="340" height="56" rx="8" stroke-width="0.5"></rect>
     <text class="th" x="340" y="152" text-anchor="middle" dominant-baseline="central">02  Rate limit</text>
-    <text class="ts" x="340" y="172" text-anchor="middle" dominant-baseline="central">RPM + TPM budgets per user / team</text>
+    <text class="ts" x="340" y="172" text-anchor="middle" dominant-baseline="central">RPM + TPM + daily budgets, atomically</text>
   </g>
   <line x1="340" y1="188" x2="340" y2="206" class="arr" marker-end="url(#arrow)"></line>
 
@@ -45,7 +45,7 @@
   <g class="node c-teal">
     <rect x="170" y="360" width="340" height="56" rx="8" stroke-width="0.5"></rect>
     <text class="th" x="340" y="380" text-anchor="middle" dominant-baseline="central">05  RAG context</text>
-    <text class="ts" x="340" y="400" text-anchor="middle" dominant-baseline="central">ChromaDB top-K → system prompt</text>
+    <text class="ts" x="340" y="400" text-anchor="middle" dominant-baseline="central">ACL-filtered ChromaDB → system prompt</text>
   </g>
   <line x1="340" y1="416" x2="340" y2="434" class="arr" marker-end="url(#arrow)"></line>
 
@@ -77,7 +77,7 @@
   <g class="node c-gray">
     <rect x="170" y="664" width="340" height="56" rx="8" stroke-width="0.5"></rect>
     <text class="th" x="340" y="684" text-anchor="middle" dominant-baseline="central">09  Record</text>
-    <text class="ts" x="340" y="704" text-anchor="middle" dominant-baseline="central">DB + Prometheus + Langfuse trace</text>
+    <text class="ts" x="340" y="704" text-anchor="middle" dominant-baseline="central">atomic usage + audit, metrics + traces</text>
   </g>
 
   <line x1="340" y1="720" x2="340" y2="738" class="arr" marker-end="url(#arrow)" mask="url(#imagine-text-gaps-6iia0r)"></line>

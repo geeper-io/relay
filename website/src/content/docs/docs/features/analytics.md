@@ -13,7 +13,9 @@ Three complementary observability systems cover different granularities:
 
 ## PostgreSQL usage data
 
-Every request records a `UsageRecord` with: `user_id`, `team_id`, `model`, `prompt_tokens`, `completion_tokens`, `cost_usd`, `latency_ms`, `created_at`.
+Every Relay-key inference request commits a `UsageRecord` and `AuditLog` together. The audit event includes request ID,
+user/team identity, model, status, token counts, RAG use, and the number of scrubbed PII entities. Prompt and response
+content is not copied into this audit row.
 
 A PostgreSQL materialized view (`usage_daily`) pre-aggregates these by `(day, user_id, team_id, model)` and is refreshed hourly in the background.
 
@@ -87,7 +89,8 @@ Then set `LANGFUSE_HOST=http://langfuse:3000`.
 
 ## Prometheus
 
-All key proxy metrics are exposed at `/metrics` in Prometheus text format. See [Health & metrics](/docs/api-reference/health) for the full metric list.
+All key proxy metrics are exposed at `/metrics` in Prometheus text format. The endpoint requires the master key by
+default. See [Health & metrics](/docs/api-reference/health) for authentication and the full metric list.
 
 Recommended alerts:
 
@@ -99,12 +102,12 @@ Recommended alerts:
 
 # Alert: p95 latency over 5s
 - alert: HighLatency
-  expr: histogram_quantile(0.95, relay_request_duration_seconds_bucket) > 5
+  expr: histogram_quantile(0.95, sum by (le) (rate(relay_request_latency_seconds_bucket[5m]))) > 5
   for: 10m
 
 # Alert: upstream errors
 - alert: UpstreamErrors
-  expr: rate(relay_requests_total{status="502"}[5m]) > 0.1
+  expr: sum(rate(relay_requests_total{status="error"}[5m])) > 0.1
   for: 2m
 ```
 
@@ -114,8 +117,8 @@ A suggested panel layout:
 
 1. **Request rate** — `rate(relay_requests_total[5m])` by model
 2. **Latency p50/p95/p99** — histogram quantiles
-3. **Token throughput** — `rate(relay_tokens_total[5m])` split prompt/completion
+3. **Token throughput** — `rate(relay_tokens_total[5m])` split by `token_type`
 4. **Rate limit hits** — `rate(relay_rate_limit_hits_total[5m])` by limit type
 5. **Cache hit rate** — `rate(relay_cache_hits_total[5m]) / rate(relay_requests_total[5m])`
-6. **PII entities scrubbed** — `rate(relay_pii_entities_total[5m])` by entity type
+6. **PII entities scrubbed** — `rate(relay_pii_entities_scrubbed_total[5m])`
 7. **Daily cost** (from PostgreSQL or Langfuse via data source plugin)

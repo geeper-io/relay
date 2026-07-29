@@ -5,7 +5,7 @@ import secrets
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.engine import get_session_factory
@@ -17,11 +17,18 @@ async def get_user_by_external_id(db: AsyncSession, external_id: str) -> User | 
     return result.scalar_one_or_none()
 
 
-async def get_user_by_key_hash(db: AsyncSession, key_hash: str) -> tuple[User, ApiKey] | None:
+async def get_user_by_key_hash(db: AsyncSession, key_hash: str) -> tuple[User, ApiKey, Team | None] | None:
+    now = datetime.now(timezone.utc)
     result = await db.execute(
-        select(User, ApiKey)
+        select(User, ApiKey, Team)
         .join(ApiKey, ApiKey.user_id == User.id)
-        .where(ApiKey.key_hash == key_hash, ApiKey.is_active.is_(True), User.is_active.is_(True))
+        .outerjoin(Team, Team.id == User.team_id)
+        .where(
+            ApiKey.key_hash == key_hash,
+            ApiKey.is_active.is_(True),
+            User.is_active.is_(True),
+            or_(ApiKey.expires_at.is_(None), ApiKey.expires_at > now),
+        )
     )
     row = result.first()
     return row if row else None
@@ -52,6 +59,7 @@ async def create_api_key(
     user_id: str,
     name: str = "default",
     scopes: list[str] | None = None,
+    expires_at: datetime | None = None,
 ) -> tuple[str, ApiKey]:
     """Returns (raw_key, ApiKey). raw_key is shown once and not stored."""
     raw_key = "gr-" + secrets.token_urlsafe(32)
@@ -65,6 +73,7 @@ async def create_api_key(
         user_id=user_id,
         name=name,
         scopes=scopes or ["chat"],
+        expires_at=expires_at,
     )
     db.add(api_key)
     await db.commit()

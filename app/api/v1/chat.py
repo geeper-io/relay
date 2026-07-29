@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 import uuid
@@ -13,7 +12,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.analytics.langfuse import build_trace_metadata
 from app.config import Settings, get_settings
-from app.core.auth import ResolvedIdentity, resolve_identity
+from app.core.auth import ResolvedIdentity, rag_filter_for_identity, require_scope
 from app.core.content_policy import ContentPolicy, get_content_policy
 from app.core.exceptions import ProxyError
 from app.core.rate_limiter import RateLimiter, get_rate_limiter
@@ -67,7 +66,7 @@ async def chat_completions(
     request_body: ChatCompletionRequest,
     raw_request: Request,
     raw_response: Response,
-    identity: ResolvedIdentity = Depends(resolve_identity),
+    identity: ResolvedIdentity = Depends(require_scope("chat")),
     settings: Settings = Depends(get_settings),
     scrubber: PIIScrubber = Depends(get_scrubber),
     restorer: PIIRestorer = Depends(get_restorer),
@@ -97,6 +96,9 @@ async def chat_completions(
             estimated_tokens,
             rpm_limit=identity.rpm_limit,
             tpm_limit=identity.tpm_limit,
+            daily_token_limit=identity.daily_token_limit,
+            team_tpm_limit=identity.team_tpm_limit,
+            team_daily_token_limit=identity.team_daily_token_limit,
         )
 
         # 4. Messages already converted above for token counting
@@ -114,7 +116,7 @@ async def chat_completions(
         if settings.rag_enabled:
             query_text = _last_user_message(scrubbed_messages)
             rag_repo = raw_request.headers.get("x-relay-repo")
-            rag_filters = {"repo": rag_repo} if rag_repo else None
+            rag_filters = rag_filter_for_identity(identity, rag_repo, require_acl=settings.rag_require_acl)
             context, rag_chunks = await retriever.retrieve_context(query_text, filters=rag_filters)
             if context:
                 scrubbed_messages = _inject_rag_context(scrubbed_messages, context)
@@ -156,6 +158,8 @@ async def chat_completions(
                     start_time=start_time,
                     rag_used=rag_used,
                     pii_count=pii_count,
+                    rate_limiter=rate_limiter,
+                    estimated_tokens=estimated_tokens,
                     trace_metadata=trace_metadata,
                     **llm_kwargs,
                 ),
@@ -183,6 +187,17 @@ async def chat_completions(
         usage = getattr(response, "usage", None)
         prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
         completion_tokens = getattr(usage, "completion_tokens", 0) or 0
+        await rate_limiter.reconcile_tokens(
+            identity.user_id,
+            identity.team_id,
+            reserved_tokens=estimated_tokens,
+            actual_tokens=prompt_tokens + completion_tokens,
+            rpm_limit=identity.rpm_limit,
+            tpm_limit=identity.tpm_limit,
+            daily_token_limit=identity.daily_token_limit,
+            team_tpm_limit=identity.team_tpm_limit,
+            team_daily_token_limit=identity.team_daily_token_limit,
+        )
         cost_usd = llm_client.estimate_cost(model, prompt_tokens, completion_tokens)
         cache_hit = bool(getattr(getattr(response, "_hidden_params", None), "cache_hit", False))
 
@@ -195,21 +210,19 @@ async def chat_completions(
             m.CACHE_HITS.labels(model=model).inc()
 
         if not identity.passthrough_key:
-            asyncio.create_task(
-                record_usage(
-                    user_id=identity.user_id,
-                    team_id=identity.team_id,
-                    model=model,
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                    latency_ms=latency_ms,
-                    request_id=request_id,
-                    cost_usd=cost_usd,
-                    cache_hit=cache_hit,
-                    was_rag_used=rag_used,
-                    pii_entities_scrubbed=pii_count,
-                    status="success",
-                )
+            await record_usage(
+                user_id=identity.user_id,
+                team_id=identity.team_id,
+                model=model,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                latency_ms=latency_ms,
+                request_id=request_id,
+                cost_usd=cost_usd,
+                cache_hit=cache_hit,
+                was_rag_used=rag_used,
+                pii_entities_scrubbed=pii_count,
+                status="success",
             )
 
         raw_response.headers["X-Request-ID"] = request_id
@@ -218,7 +231,7 @@ async def chat_completions(
         return response
 
     except ProxyError as exc:
-        _record_error(exc, model, identity, request_id, start_time, pii_count=0)
+        await _record_error(exc, model, identity, request_id, start_time, pii_count=0)
         from app.core.exceptions import RateLimitError
 
         headers = {"Retry-After": str(exc.retry_after)} if isinstance(exc, RateLimitError) else {}
@@ -244,6 +257,8 @@ async def _stream_response(
     start_time: float,
     rag_used: bool,
     pii_count: int,
+    rate_limiter: RateLimiter,
+    estimated_tokens: int,
     trace_metadata: dict | None = None,
     **kwargs,
 ) -> AsyncGenerator[str, None]:
@@ -330,6 +345,17 @@ async def _stream_response(
     finally:
         latency_ms = int((time.monotonic() - start_time) * 1000)
         cost_usd = llm_client.estimate_cost(model, prompt_tokens, completion_tokens)
+        await rate_limiter.reconcile_tokens(
+            identity.user_id,
+            identity.team_id,
+            reserved_tokens=estimated_tokens,
+            actual_tokens=prompt_tokens + completion_tokens,
+            rpm_limit=identity.rpm_limit,
+            tpm_limit=identity.tpm_limit,
+            daily_token_limit=identity.daily_token_limit,
+            team_tpm_limit=identity.team_tpm_limit,
+            team_daily_token_limit=identity.team_daily_token_limit,
+        )
 
         m.REQUEST_COUNT.labels(model=model, status="success").inc()
         m.REQUEST_LATENCY.labels(model=model, stream="true").observe(time.monotonic() - start_time)
@@ -338,25 +364,23 @@ async def _stream_response(
         m.COST_USD.labels(model=model).inc(cost_usd)
 
         if not identity.passthrough_key:
-            asyncio.create_task(
-                record_usage(
-                    user_id=identity.user_id,
-                    team_id=identity.team_id,
-                    model=model,
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                    latency_ms=latency_ms,
-                    request_id=request_id,
-                    cost_usd=cost_usd,
-                    cache_hit=False,  # streaming responses are not cached
-                    was_rag_used=rag_used,
-                    pii_entities_scrubbed=pii_count,
-                    status="success",
-                )
+            await record_usage(
+                user_id=identity.user_id,
+                team_id=identity.team_id,
+                model=model,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                latency_ms=latency_ms,
+                request_id=request_id,
+                cost_usd=cost_usd,
+                cache_hit=False,  # streaming responses are not cached
+                was_rag_used=rag_used,
+                pii_entities_scrubbed=pii_count,
+                status="success",
             )
 
 
-def _record_error(
+async def _record_error(
     exc: ProxyError,
     model: str,
     identity: ResolvedIdentity | None,
@@ -376,18 +400,16 @@ def _record_error(
 
     if identity and not identity.passthrough_key:
         latency_ms = int((time.monotonic() - start_time) * 1000)
-        asyncio.create_task(
-            record_usage(
-                user_id=identity.user_id,
-                team_id=identity.team_id,
-                model=model,
-                prompt_tokens=0,
-                completion_tokens=0,
-                latency_ms=latency_ms,
-                request_id=request_id,
-                was_rag_used=False,
-                pii_entities_scrubbed=pii_count,
-                status="error",
-                error_code=exc.error_code,
-            )
+        await record_usage(
+            user_id=identity.user_id,
+            team_id=identity.team_id,
+            model=model,
+            prompt_tokens=0,
+            completion_tokens=0,
+            latency_ms=latency_ms,
+            request_id=request_id,
+            was_rag_used=False,
+            pii_entities_scrubbed=pii_count,
+            status="error",
+            error_code=exc.error_code,
         )

@@ -8,7 +8,7 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - PROXY_MASTER_KEY=${PROXY_MASTER_KEY:-change-me-in-production}
+      - PROXY_MASTER_KEY=${PROXY_MASTER_KEY:?set PROXY_MASTER_KEY in .env}
       - DATABASE_URL=postgresql+asyncpg://proxy:proxy@postgres:5432/relay
       # Langfuse analytics — remove or leave blank to disable
 #      - ANALYTICS__ENABLED=${ANALYTICS__ENABLED:-false}

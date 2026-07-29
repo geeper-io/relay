@@ -6,11 +6,12 @@ import uuid
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.analytics.langfuse import init_langfuse
 from app.config import get_settings
+from app.core.auth import require_admin
 from app.core.content_policy import init_content_policy
 from app.core.exceptions import ProxyError, proxy_exception_handler
 from app.core.rate_limiter import init_rate_limiter
@@ -31,6 +32,10 @@ log = structlog.get_logger()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+
+    insecure_master_keys = {"", "change-me", "change-me-in-production", "replace-with-a-random-secret"}
+    if settings.proxy_master_key in insecure_master_keys:
+        raise RuntimeError("PROXY_MASTER_KEY must be set to a strong, non-default value")
 
     logging.basicConfig(level=settings.log_level.upper())
     log.info("Starting Geeper Relay", log_level=settings.log_level)
@@ -92,7 +97,7 @@ async def lifespan(app: FastAPI):
     )
 
     # Rate limiter
-    init_rate_limiter(settings)
+    rate_limiter = init_rate_limiter(settings)
 
     # Content policy
     init_content_policy(settings)
@@ -113,27 +118,31 @@ async def lifespan(app: FastAPI):
     yield
 
     refresh_task.cancel()
+    await rate_limiter.close()
     log.info("Shutting down Geeper Relay")
 
 
 def create_app() -> FastAPI:
+    settings = get_settings()
     app = FastAPI(
         title="Geeper Relay",
         description="In-house AI gateway with PII scrubbing, RAG, usage tracking, and Prometheus metrics",
         version="1.0.0",
         lifespan=lifespan,
-        docs_url="/docs",
-        redoc_url="/redoc",
+        docs_url="/docs" if settings.expose_docs else None,
+        redoc_url="/redoc" if settings.expose_docs else None,
+        openapi_url="/openapi.json" if settings.expose_docs else None,
     )
 
     # CORS — lock this down per your internal network requirements
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    if settings.cors_allowed_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_allowed_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
     # Request ID middleware
     @app.middleware("http")
@@ -166,7 +175,8 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
 
     # Prometheus metrics endpoint
-    app.get("/metrics", include_in_schema=False)(metrics_response)
+    metrics_dependencies = [Depends(require_admin)] if settings.metrics_require_auth else []
+    app.get("/metrics", include_in_schema=False, dependencies=metrics_dependencies)(metrics_response)
 
     return app
 

@@ -11,9 +11,13 @@ The proxy reads a YAML config file on startup. The path is set via the `CONFIG_F
 |---|---|---|---|
 | `workers` | int | `4` | Number of uvicorn worker processes |
 | `log_level` | string | `"info"` | Log level: `debug`, `info`, `warning`, `error` |
-| `allow_passthrough_keys` | bool | `true` | Accept non-`gr-` keys and forward them to the upstream provider |
+| `allow_passthrough_keys` | bool | `false` | Accept non-`gr-` provider keys. Enable only for explicitly trusted BYOK deployments |
+| `expose_docs` | bool | `false` | Expose `/docs`, `/redoc`, and `/openapi.json` |
+| `metrics_require_auth` | bool | `true` | Require the master key on `/metrics` |
+| `cors_allowed_origins` | list | `[]` | Browser origins allowed by CORS. Empty disables CORS middleware |
 
-Helm: `config.workers`, `config.logLevel`, `config.server.allowPassthroughKeys`
+Helm: `config.workers`, `config.logLevel`, `config.allowPassthroughKeys`, `config.exposeDocs`,
+`config.metricsRequireAuth`, `config.corsAllowedOrigins`
 
 ## `llm`
 
@@ -44,6 +48,10 @@ Helm: `config.llm.*`
 | `top_k` | int | `5` | Maximum chunks to retrieve |
 | `score_threshold` | float | `0.4` | Minimum cosine similarity score |
 | `embedding_model` | string | `"all-MiniLM-L6-v2"` | sentence-transformers model for embedding |
+| `require_acl` | bool | `true` | Derive repository filters from authenticated API-key scopes |
+
+With ACL enforcement enabled, keys require `rag:repo:owner/name` for individual repositories or `rag:*` for all
+repositories. `X-Relay-Repo` narrows access; it never grants access.
 
 Helm: `config.rag.*`
 
@@ -117,7 +125,10 @@ Helm: `config.analytics.*`, `secrets.langfuse*`
 server:
   workers: 4
   log_level: info
-  allow_passthrough_keys: true
+  allow_passthrough_keys: false
+  expose_docs: false
+  metrics_require_auth: true
+  cors_allowed_origins: []
 
 llm:
   default_model: anthropic/claude-haiku-4-5-20251001
@@ -134,6 +145,7 @@ rag:
   top_k: 5
   score_threshold: 0.4
   embedding_model: all-MiniLM-L6-v2
+  require_acl: true
 
 pii:
   enabled: true

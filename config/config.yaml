@@ -3,6 +3,10 @@ server:
   port: 8000
   workers: 4
   log_level: "info"
+  allow_passthrough_keys: false
+  expose_docs: false
+  metrics_require_auth: true
+  cors_allowed_origins: []
 
 llm:
   default_model: "gpt-4o"
@@ -33,6 +37,7 @@ rag:
   embedding_model: "all-MiniLM-L6-v2"
   context_prefix: "Relevant internal documentation:\n\n"
   context_separator: "\n\n---\n\n"
+  require_acl: true
 
 pii:
   enabled: true

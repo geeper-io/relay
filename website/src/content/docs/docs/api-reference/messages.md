@@ -11,12 +11,13 @@ All proxy features (PII scrubbing, RAG, rate limiting, content policy, caching) 
 
 ```
 POST /v1/messages
-x-api-key: <api-key>
+Authorization: Bearer <api-key>
 anthropic-version: 2023-06-01
 Content-Type: application/json
 ```
 
-`Authorization: Bearer <api-key>` is also accepted as an alternative to `x-api-key`.
+Relay authenticates this endpoint with the `Authorization` header. For Claude Code, set `ANTHROPIC_AUTH_TOKEN` rather
+than `ANTHROPIC_API_KEY` so the client sends bearer authentication.
 
 ### Body
 
@@ -93,7 +94,7 @@ import anthropic
 
 client = anthropic.Anthropic(
     base_url="https://proxy.internal",
-    api_key="llmp_...",
+    auth_token="gr-...",
 )
 
 # Non-streaming
@@ -118,12 +119,6 @@ with client.messages.stream(
 
 ```bash
 export ANTHROPIC_BASE_URL="https://proxy.internal"
-export ANTHROPIC_API_KEY="llmp_..."
+export ANTHROPIC_AUTH_TOKEN="gr-..."
 claude
-```
-
-Or with flags:
-
-```bash
-claude --api-url https://proxy.internal --api-key llmp_...
 ```

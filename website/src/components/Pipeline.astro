@@ -3,7 +3,7 @@ const steps = [
   {
     number: "01",
     title: "Authentication",
-    description: "API key lookup, team resolution, user identification",
+    description: "Validate expiry and scopes; resolve user and team identity",
     color: "blue",
     icon: "key",
   },
@@ -38,7 +38,7 @@ const steps = [
   {
     number: "06",
     title: "RAG Context",
-    description: "Semantic search in ChromaDB, inject relevant chunks",
+    description: "ACL-filtered ChromaDB search; inject authorized chunks",
     color: "emerald",
     icon: "database",
   },
@@ -59,7 +59,7 @@ const steps = [
   {
     number: "09",
     title: "Metrics & Usage",
-    description: "Record tokens, cost, latency; restore PII in response",
+    description: "Commit usage + audit; export metrics; restore response PII",
     color: "teal",
     icon: "bar-chart",
   },

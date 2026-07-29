@@ -23,6 +23,10 @@ Non-secret settings mounted as `/app/config/config.yaml`:
 |---|---|---|
 | `config.workers` | `4` | uvicorn worker processes |
 | `config.logLevel` | `"info"` | Log level |
+| `config.allowPassthroughKeys` | `false` | Allow non-`gr-` BYOK provider keys |
+| `config.exposeDocs` | `false` | Expose API documentation and OpenAPI schema |
+| `config.metricsRequireAuth` | `true` | Protect `/metrics` with the master key |
+| `config.corsAllowedOrigins` | `[]` | Explicit browser CORS origins |
 | `config.llm.defaultModel` | `"gpt-4o"` | Default model |
 | `config.llm.allowedModels` | `[gpt-4o, gpt-4o-mini, ...]` | Model allowlist |
 | `config.llm.fallbackModels` | `[]` | Fallback chain on provider error |
@@ -32,6 +36,7 @@ Non-secret settings mounted as `/app/config/config.yaml`:
 | `config.rag.topK` | `5` | Top-k chunks |
 | `config.rag.scoreThreshold` | `0.4` | Min similarity score |
 | `config.rag.embeddingModel` | `"all-MiniLM-L6-v2"` | Embedding model |
+| `config.rag.requireAcl` | `true` | Restrict retrieval using authenticated repository scopes |
 | `config.pii.enabled` | `true` | Enable PII scrubbing |
 | `config.pii.scoreThreshold` | `0.7` | Min Presidio confidence |
 | `config.pii.entities` | `[PERSON, EMAIL_ADDRESS, ...]` | Entity types |
@@ -155,6 +160,9 @@ When enabled, deploys a standalone ChromaDB pod that all relay replicas share vi
 | `prometheus.serviceMonitor.interval` | `"15s"` | Scrape interval |
 | `prometheus.serviceMonitor.namespace` | `""` | Empty = release namespace |
 | `prometheus.serviceMonitor.labels` | `{}` | Labels to match Prometheus Operator |
+
+When `config.metricsRequireAuth` is true, the generated `ServiceMonitor` obtains its bearer credential from the
+master-key Secret.
 
 ## Bundled PostgreSQL (Bitnami)
 
