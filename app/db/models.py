@@ -109,3 +109,29 @@ class AuditLog(Base):
     resource: Mapped[str | None] = mapped_column(String(255), nullable=True)
     metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MCPApproval(Base):
+    __tablename__ = "mcp_approvals"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    team_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    server_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    tool_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    arguments_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    arguments: Mapped[dict] = mapped_column(JSON, default=dict)
+    purpose: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    policy_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decided_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    decision_reason: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_mcp_approvals_status_expires", "status", "expires_at"),
+        Index("ix_mcp_approvals_user_requested", "user_id", "requested_at"),
+    )

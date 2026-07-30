@@ -102,6 +102,33 @@ ROUTING_DECISIONS = Counter(
     ["deployment", "policy_version", "endpoint"],
 )
 
+# ── MCP control plane ────────────────────────────────────────────────────────
+
+MCP_POLICY_DECISIONS = Counter(
+    "relay_mcp_policy_decisions_total",
+    "MCP tool authorization decisions",
+    ["server", "tool", "action", "policy_version"],
+)
+
+MCP_TOOL_CALLS = Counter(
+    "relay_mcp_tool_calls_total",
+    "MCP tool invocations brokered by Relay",
+    ["server", "tool", "status"],
+)
+
+MCP_TOOL_LATENCY = Histogram(
+    "relay_mcp_tool_latency_seconds",
+    "MCP tool invocation latency",
+    ["server", "tool"],
+    buckets=[0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60, 120],
+)
+
+MCP_APPROVALS = Counter(
+    "relay_mcp_approvals_total",
+    "MCP approval lifecycle events",
+    ["status"],
+)
+
 
 def metrics_response():
     """Returns a FastAPI Response with the current Prometheus metrics."""

@@ -57,6 +57,23 @@ See [Deployment and policy routing](/docs/features/routing).
 |---|---|---|---|
 | `default_store` | bool | `false` | Default provider-side storage behavior for `/v1/responses` |
 
+## `mcp`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | bool | `false` | Enable the MCP protocol and REST gateway endpoints |
+| `protocol_version` | string | `"2025-11-25"` | MCP version offered during initialization |
+| `servers` | map | `{}` | Registered remote Streamable HTTP servers and credential environment mappings |
+| `active_policy_version` | string | `"default"` | Active MCP authorization policy snapshot |
+| `policies` | map | `{}` | Ordered versioned allow, deny, and approval rules |
+| `approval_ttl_seconds` | int | `900` | Lifetime of pending and approved operations |
+| `request_timeout_seconds` | float | `60` | Per-request remote MCP timeout |
+| `max_result_bytes` | int | `1000000` | Maximum sanitized tool-result size |
+| `allow_insecure_http` | bool | `false` | Permit non-TLS remote MCP URLs; development only |
+| `allowed_origins` | list | `[]` | Browser origins accepted by `POST /mcp` when an Origin header is present |
+
+See [MCP gateway and approvals](/docs/features/mcp-gateway).
+
 ## `telemetry`
 
 | Key | Type | Default | Description |
@@ -188,6 +205,18 @@ routing:
 
 responses:
   default_store: false
+
+mcp:
+  enabled: false
+  protocol_version: "2025-11-25"
+  servers: {}
+  active_policy_version: default
+  policies: {}
+  approval_ttl_seconds: 900
+  request_timeout_seconds: 60
+  max_result_bytes: 1000000
+  allow_insecure_http: false
+  allowed_origins: []
 
 telemetry:
   enabled: false

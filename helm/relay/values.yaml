@@ -64,6 +64,18 @@ config:
   responses:
     defaultStore: false
 
+  mcp:
+    enabled: false
+    protocolVersion: "2025-11-25"
+    servers: {}
+    activePolicyVersion: "default"
+    policies: {}
+    approvalTtlSeconds: 900
+    requestTimeoutSeconds: 60
+    maxResultBytes: 1000000
+    allowInsecureHttp: false
+    allowedOrigins: []
+
   telemetry:
     enabled: false
     serviceName: "geeper-relay"
@@ -182,6 +194,10 @@ secrets:
   oidcIssuerUrl: ""
   oidcClientId: ""
   oidcClientSecret: ""
+
+  # Optional pre-existing Secret whose keys become environment variables for
+  # MCP server headers_env mappings. Relay never writes these values to config.
+  mcpCredentialSecret: ""
 
   # Langfuse analytics
   langfusePublicKey: ""

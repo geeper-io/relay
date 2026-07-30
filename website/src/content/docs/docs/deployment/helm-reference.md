@@ -37,6 +37,14 @@ Non-secret settings mounted as `/app/config/config.yaml`:
 | `config.routing.requireDeclaredCapabilities` | `false` | Fail closed for undeclared model capabilities |
 | `config.routing.policies` | `{}` | Versioned routing policy map |
 | `config.responses.defaultStore` | `false` | Provider-side Responses storage default |
+| `config.mcp.enabled` | `false` | Enable MCP gateway endpoints |
+| `config.mcp.protocolVersion` | `"2025-11-25"` | MCP lifecycle version |
+| `config.mcp.servers` | `{}` | Remote Streamable HTTP registry |
+| `config.mcp.activePolicyVersion` | `"default"` | Active MCP authorization policy |
+| `config.mcp.policies` | `{}` | Versioned tool authorization and approval rules |
+| `config.mcp.approvalTtlSeconds` | `900` | Approval lifetime |
+| `config.mcp.requestTimeoutSeconds` | `60` | Remote MCP request timeout |
+| `config.mcp.maxResultBytes` | `1000000` | Sanitized result size limit |
 | `config.telemetry.enabled` | `false` | Enable OpenTelemetry |
 | `config.telemetry.otlpEndpoint` | `""` | OTLP/HTTP traces endpoint |
 | `config.rag.enabled` | `true` | Enable RAG |
@@ -78,6 +86,7 @@ Non-secret settings mounted as `/app/config/config.yaml`:
 | `secrets.oidcIssuerUrl` | `""` | OIDC issuer used for discovery |
 | `secrets.oidcClientId` | `""` | OIDC client ID |
 | `secrets.oidcClientSecret` | `""` | OIDC client secret |
+| `secrets.mcpCredentialSecret` | `""` | Existing Secret injected as MCP credential environment variables |
 | `secrets.langfusePublicKey` | `""` | |
 | `secrets.langfuseSecretKey` | `""` | |
 | `secrets.langfuseHost` | `""` | Empty = Langfuse Cloud |

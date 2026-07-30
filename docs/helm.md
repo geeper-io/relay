@@ -107,3 +107,11 @@ secrets:
 
 The external Secret must contain: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DATABASE_URL` (if not using the bundled
 PostgreSQL), plus any optional keys (`GOOGLE_CLIENT_ID`, `LANGFUSE_PUBLIC_KEY`, etc.).
+
+MCP server credentials use a separate optional Secret. Each key becomes an environment variable referenced by
+`config.mcp.servers.<name>.headers_env`:
+
+```yaml
+secrets:
+  mcpCredentialSecret: relay-mcp-credentials
+```

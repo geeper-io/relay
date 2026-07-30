@@ -73,7 +73,8 @@ Response:
 The `key` is shown **once**. Keys are stored as SHA-256 hashes — the original cannot be recovered.
 :::
 
-Supported scopes are `chat`, `responses`, `embeddings`, `rag:repo:owner/name`, `rag:*`, and the global `*`. If no scopes are
+Supported scopes include `chat`, `responses`, `embeddings`, `rag:repo:owner/name`, `rag:*`, granular MCP scopes
+(`mcp:*`, `mcp:server:*`, or `mcp:server:tool`), and the global `*`. If no scopes are
 provided, the key receives `chat` only. The optional `expires_at` is checked both during database lookup and on cached
 identities.
 

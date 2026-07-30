@@ -39,6 +39,8 @@ Drop-in OpenAI & Anthropic compatible. Deploy to Kubernetes in minutes.
 - **OpenTelemetry** — optional OTLP traces correlated with Langfuse and routing metadata
 - **OIDC SSO** — provider discovery for Entra ID, Okta, Keycloak, Auth0, and other OpenID Connect providers
 - **Evaluation harness** — compare deployment aliases using JSONL cases, deterministic graders, latency, and token reports
+- **MCP gateway** — remote tool discovery, granular scopes, versioned allow/deny/approval policies, argument-bound
+  one-time approvals, JSON Schema validation, output scrubbing, and auditable Streamable HTTP brokering
 - **Content policy** — blocks prompt-injection patterns and oversized inputs
 - **Langfuse analytics** — optional per-request LLM tracing with user IDs, session grouping, and cost
 - **Admin API** — manage users, teams, and API keys; pull usage reports

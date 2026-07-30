@@ -58,6 +58,20 @@ data:
     responses:
       default_store: {{ .Values.config.responses.defaultStore }}
 
+    mcp:
+      enabled: {{ .Values.config.mcp.enabled }}
+      protocol_version: {{ .Values.config.mcp.protocolVersion | quote }}
+      servers:
+        {{- toYaml .Values.config.mcp.servers | nindent 8 }}
+      active_policy_version: {{ .Values.config.mcp.activePolicyVersion | quote }}
+      policies:
+        {{- toYaml .Values.config.mcp.policies | nindent 8 }}
+      approval_ttl_seconds: {{ .Values.config.mcp.approvalTtlSeconds }}
+      request_timeout_seconds: {{ .Values.config.mcp.requestTimeoutSeconds }}
+      max_result_bytes: {{ .Values.config.mcp.maxResultBytes }}
+      allow_insecure_http: {{ .Values.config.mcp.allowInsecureHttp }}
+      allowed_origins: {{ toJson .Values.config.mcp.allowedOrigins }}
+
     telemetry:
       enabled: {{ .Values.config.telemetry.enabled }}
       service_name: {{ .Values.config.telemetry.serviceName | quote }}

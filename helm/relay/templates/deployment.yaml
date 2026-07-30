@@ -189,6 +189,12 @@ spec:
             {{- end }}
             {{- end }}
 
+          {{- with .Values.secrets.mcpCredentialSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ . | quote }}
+          {{- end }}
+
           # ── Probes ─────────────────────────────────────────────────────────
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}

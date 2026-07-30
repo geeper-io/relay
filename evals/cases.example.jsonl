@@ -1,0 +1,2 @@
+{"id":"capital","input":"What is the capital of Finland? Reply with only the city.","expected":{"equals":"Helsinki"}}
+{"id":"json","input":"Return a JSON object with keys name and status for service Relay.","expected":{"json_keys":["name","status"]},"parameters":{"text":{"format":{"type":"json_object"}}}}

@@ -69,6 +69,19 @@ class Settings(BaseSettings):
     # Responses API: enterprise-safe default avoids provider-side response storage.
     responses__default_store: bool = False
 
+    # MCP control plane. Relay brokers configured remote Streamable HTTP
+    # servers; it never starts local processes or executes tool code itself.
+    mcp__enabled: bool = False
+    mcp__protocol_version: str = "2025-11-25"
+    mcp__servers: dict[str, dict[str, Any]] = {}
+    mcp__active_policy_version: str = "default"
+    mcp__policies: dict[str, dict[str, Any]] = {}
+    mcp__approval_ttl_seconds: int = 900
+    mcp__request_timeout_seconds: float = 60.0
+    mcp__max_result_bytes: int = 1_000_000
+    mcp__allow_insecure_http: bool = False
+    mcp__allowed_origins: list[str] = []
+
     # OpenTelemetry (optional OTLP export)
     telemetry__enabled: bool = False
     telemetry__service_name: str = "geeper-relay"
@@ -248,6 +261,22 @@ class Settings(BaseSettings):
     @property
     def responses_default_store(self) -> bool:
         return self.responses__default_store
+
+    @property
+    def mcp_enabled(self) -> bool:
+        return self.mcp__enabled
+
+    @property
+    def mcp_servers(self) -> dict[str, dict[str, Any]]:
+        return self.mcp__servers
+
+    @property
+    def mcp_active_policy_version(self) -> str:
+        return self.mcp__active_policy_version
+
+    @property
+    def mcp_policies(self) -> dict[str, dict[str, Any]]:
+        return self.mcp__policies
 
     @property
     def telemetry_enabled(self) -> bool:

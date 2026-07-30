@@ -1,0 +1,10 @@
+base_url: http://localhost:8000
+api_key_env: RELAY_API_KEY
+endpoint: responses
+deployments:
+  - general
+  - reasoning
+dataset: cases.example.jsonl
+concurrency: 4
+timeout_seconds: 120
+output: results.json

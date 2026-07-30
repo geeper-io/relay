@@ -161,21 +161,27 @@ def create_app() -> FastAPI:
     from app.api.auth import router as auth_router
     from app.api.internal.admin import router as admin_router
     from app.api.internal.kb import router as kb_router
+    from app.api.internal.mcp import router as mcp_admin_router
+    from app.api.mcp_gateway import router as mcp_gateway_router
     from app.api.v1.chat import router as chat_router
     from app.api.v1.embeddings import router as embeddings_router
     from app.api.v1.health import router as health_router
+    from app.api.v1.mcp import router as mcp_router
     from app.api.v1.messages import router as messages_router
     from app.api.v1.models import router as models_router
     from app.api.v1.responses import router as responses_router
 
     app.include_router(health_router)
+    app.include_router(mcp_gateway_router)
     app.include_router(chat_router, prefix="/v1")
     app.include_router(embeddings_router, prefix="/v1")
     app.include_router(messages_router, prefix="/v1")
     app.include_router(models_router, prefix="/v1")
     app.include_router(responses_router, prefix="/v1")
+    app.include_router(mcp_router, prefix="/v1")
     app.include_router(admin_router, prefix="/internal")
     app.include_router(kb_router, prefix="/internal")
+    app.include_router(mcp_admin_router, prefix="/internal")
     app.include_router(auth_router)
 
     # Prometheus metrics endpoint

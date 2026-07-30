@@ -43,6 +43,7 @@ export default defineConfig({
             { label: "Analytics", slug: "docs/features/analytics" },
             { label: "Routing Policies", slug: "docs/features/routing" },
             { label: "Evaluation Harness", slug: "docs/features/evaluations" },
+            { label: "MCP Gateway", slug: "docs/features/mcp-gateway" },
           ],
         },
         {

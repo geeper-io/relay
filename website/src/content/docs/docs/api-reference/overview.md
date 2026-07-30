@@ -9,6 +9,8 @@ Geeper Relay exposes these endpoint groups:
 |---|---|---|
 | OpenAI-compatible inference | `/v1/chat/completions`, `/v1/responses`, `/v1/embeddings`, `/v1/models` | API key |
 | Anthropic Messages API | `/v1/messages` | API key |
+| MCP protocol gateway | `/mcp` | MCP-scoped Relay API key |
+| MCP gateway REST API | `/v1/mcp/*` | MCP-scoped Relay API key |
 | Admin | `/internal/*` | Master key |
 | Health | `/healthz`, `/readyz` | None |
 | Metrics | `/metrics` | Master key by default |
@@ -38,6 +40,9 @@ Keys can expire and carry capability/data scopes:
 | `embeddings` | `/v1/embeddings` |
 | `rag:repo:owner/name` | RAG retrieval from one repository |
 | `rag:*` | RAG retrieval from all repositories |
+| `mcp:*` | All configured MCP servers and tools |
+| `mcp:server:*` | All tools from one MCP server |
+| `mcp:server:tool` | One tool from one MCP server |
 | `*` | All API capabilities |
 
 ### Passthrough keys (bring your own)

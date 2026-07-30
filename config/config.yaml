@@ -58,6 +58,44 @@ responses:
   # Provider-side response storage is opt-in for enterprise privacy.
   default_store: false
 
+# MCP is disabled until remote servers and a deny-by-default policy are declared.
+# Relay only brokers Streamable HTTP; external servers own tool execution.
+mcp:
+  enabled: false
+  protocol_version: "2025-11-25"
+  servers: {}
+  active_policy_version: "default"
+  policies: {}
+  approval_ttl_seconds: 900
+  request_timeout_seconds: 60
+  max_result_bytes: 1000000
+  allow_insecure_http: false
+  allowed_origins: []
+  # servers:
+  #   code:
+  #     url: "https://code-tools.internal/mcp"
+  #     transport: streamable_http
+  #     description: "External sandbox execution service"
+  #     headers_env:
+  #       Authorization: CODE_MCP_AUTHORIZATION
+  # policies:
+  #   "2026-07-30":
+  #     default_action: deny
+  #     rules:
+  #       - name: tests
+  #         server: code
+  #         tool: "test_*"
+  #         action: allow
+  #       - name: execution
+  #         server: code
+  #         tool: execute
+  #         action: require_approval
+  #         constraints:
+  #           allowed_values:
+  #             runtime: [python, node]
+  #           denied_patterns:
+  #             command: ["rm\\s+-rf", "sudo"]
+
 telemetry:
   enabled: false
   service_name: "geeper-relay"

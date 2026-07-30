@@ -331,6 +331,38 @@ event: message_delta
 event: message_stop
 ```
 
+## MCP gateway
+
+Relay exposes a stable MCP Streamable HTTP endpoint at `POST /mcp` and REST endpoints under `/v1/mcp`. It brokers
+configured remote MCP servers; it does not run local `stdio` processes or execute tool code inside Relay.
+
+```yaml
+mcp:
+  enabled: true
+  protocol_version: "2025-11-25"
+  active_policy_version: "2026-07-30"
+  servers:
+    code:
+      url: "https://code-tools.internal/mcp"
+      headers_env:
+        Authorization: CODE_MCP_AUTHORIZATION
+  policies:
+    "2026-07-30":
+      default_action: deny
+      rules:
+        - server: code
+          tool: "test_*"
+          action: allow
+        - server: code
+          tool: execute
+          action: require_approval
+```
+
+Keys use granular `mcp:*`, `mcp:server:*`, or `mcp:server:tool` scopes. Approval tokens are short-lived, signed,
+argument-bound, policy-bound, and single-use. Remote arguments are checked against JSON Schema 2020-12; results are
+PII-scrubbed and size-limited. See the website's **MCP gateway and approvals** guide for the full policy and API
+reference.
+
 ## Google SSO portal
 
 Employees can self-serve an API key by logging in with their Google account — no admin intervention required.

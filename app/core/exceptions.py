@@ -48,6 +48,16 @@ class UpstreamError(ProxyError):
     error_code = "upstream_error"
 
 
+class ApprovalRequiredError(ProxyError):
+    status_code = 409
+    error_code = "approval_required"
+
+
+class MCPProtocolError(ProxyError):
+    status_code = 502
+    error_code = "mcp_protocol_error"
+
+
 def _make_error_body(error_code: str, message: str) -> dict:
     return {"error": {"type": error_code, "message": message}}
 
