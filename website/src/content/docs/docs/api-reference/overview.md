@@ -3,11 +3,11 @@ title: API overview & authentication
 description: Authentication model, request headers, and error shapes for all Geeper Relay endpoints.
 ---
 
-Geeper Relay exposes three groups of endpoints:
+Geeper Relay exposes these endpoint groups:
 
 | Group | Path prefix | Auth |
 |---|---|---|
-| OpenAI-compatible inference | `/v1/chat/completions`, `/v1/embeddings`, `/v1/models` | API key |
+| OpenAI-compatible inference | `/v1/chat/completions`, `/v1/responses`, `/v1/embeddings`, `/v1/models` | API key |
 | Anthropic Messages API | `/v1/messages` | API key |
 | Admin | `/internal/*` | Master key |
 | Health | `/healthz`, `/readyz` | None |
@@ -34,6 +34,7 @@ Keys can expire and carry capability/data scopes:
 | Scope | Access |
 |---|---|
 | `chat` | `/v1/chat/completions`, `/v1/messages`, `/v1/models` |
+| `responses` | `/v1/responses` |
 | `embeddings` | `/v1/embeddings` |
 | `rag:repo:owner/name` | RAG retrieval from one repository |
 | `rag:*` | RAG retrieval from all repositories |
@@ -42,7 +43,7 @@ Keys can expire and carry capability/data scopes:
 ### Passthrough keys (bring your own)
 
 Passthrough is disabled by default. When `server.allow_passthrough_keys` is explicitly set to `true`, a key that does
-**not** start with `gr-` is forwarded to the upstream provider. It receives `chat` and `embeddings` capability but no
+**not** start with `gr-` is forwarded to the upstream provider. It receives `chat`, `responses`, and `embeddings` capability but no
 RAG scopes, and it is not written to Relay's user-attributed usage/audit tables.
 
 This lets employees point their existing SDK at Relay without being issued a separate key:
@@ -69,6 +70,9 @@ Authorization: Bearer <PROXY_MASTER_KEY>
 
 Every response includes an `x-request-id` header with a UUID. Include this in bug reports and log queries.
 
+Inference responses also include `X-Relay-Deployment` and `X-Relay-Policy-Version` so callers can correlate behavior
+with a concrete versioned routing decision.
+
 ## Error envelope
 
 All error responses use a consistent JSON shape:
@@ -90,7 +94,7 @@ Common error types:
 | `authentication_error` | 401 | Invalid or missing API key |
 | `content_policy_violation` | 400 | Blocked pattern or token limit exceeded |
 | `rate_limit_exceeded` | 429 | Token-bucket limit hit |
-| `model_not_allowed` | 400 | Model not in `allowedModels` |
+| `model_not_allowed` | 400 | Model/deployment disallowed or missing a required capability |
 | `upstream_error` | 502 | LLM provider returned an error |
 | `internal_error` | 500 | Unexpected proxy error |
 

@@ -10,6 +10,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from app.config import Settings
 from app.core.exceptions import ModelNotAllowedError, UpstreamError
+from app.core.routing import ModelRouter, RoutingDecision
 
 litellm.set_verbose = False
 log = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ def init_cache(settings: Settings) -> None:
 class LLMClient:
     def __init__(self, settings: Settings):
         self._settings = settings
+        self._router = ModelRouter(settings)
         if settings.openai_api_key:
             os.environ.setdefault("OPENAI_API_KEY", settings.openai_api_key)
         if settings.anthropic_api_key:
@@ -43,19 +45,20 @@ class LLMClient:
             os.environ.setdefault("AZURE_OPENAI_ENDPOINT", settings.azure_openai_endpoint)
 
     def resolve_model(self, model: str) -> str:
-        resolved = self._settings.model_aliases.get(model, model)
-        allowed = self._settings.allowed_models
-        if not allowed:
-            return resolved  # empty list = allow all
-        if resolved not in allowed:
-            # Try matching ignoring provider prefix (e.g. "claude-x" == "anthropic/claude-x")
-            for a in allowed:
-                if a.split("/", 1)[-1] == resolved or a.split("/", 1)[-1] == model:
-                    return a
-            raise ModelNotAllowedError(
-                f"Model '{model}' is not available. Allowed: {', '.join(a.split('/', 1)[-1] for a in allowed)}"
-            )
-        return resolved
+        return self.route(model).model
+
+    def route(
+        self,
+        model: str,
+        *,
+        required_capabilities: set[str] | None = None,
+        team_id: str | None = None,
+    ) -> RoutingDecision:
+        return self._router.route(
+            model,
+            required_capabilities=required_capabilities,
+            team_id=team_id,
+        )
 
     def count_tokens(self, model: str, messages: list[dict]) -> int:
         """Exact token count using the model's actual tokenizer via LiteLLM."""
@@ -106,6 +109,7 @@ class LLMClient:
         temperature: float | None = None,
         trace_metadata: dict | None = None,
         api_key: str | None = None,
+        fallback_models: list[str] | tuple[str, ...] | None = None,
         **kwargs: Any,
     ) -> litellm.ModelResponse:
         try:
@@ -122,8 +126,9 @@ class LLMClient:
                 call_kwargs["api_key"] = api_key
             # Don't use litellm fallbacks with a passthrough key — litellm doesn't
             # propagate api_key to fallback calls, so they'd use the proxy's own key.
-            if self._settings.fallback_models and not api_key:
-                call_kwargs["fallbacks"] = self._settings.fallback_models
+            effective_fallbacks = fallback_models or self._settings.fallback_models
+            if effective_fallbacks and not api_key:
+                call_kwargs["fallbacks"] = list(effective_fallbacks)
             if len(self._settings.allowed_models) > 1 and not api_key:
                 call_kwargs["context_window_fallback_dict"] = self._context_window_fallbacks()
 
@@ -144,6 +149,7 @@ class LLMClient:
         temperature: float | None = None,
         trace_metadata: dict | None = None,
         api_key: str | None = None,
+        fallback_models: list[str] | tuple[str, ...] | None = None,
         **kwargs: Any,
     ) -> AsyncGenerator[litellm.utils.StreamingChoices, None]:
         try:
@@ -159,8 +165,9 @@ class LLMClient:
             )
             if api_key:
                 call_kwargs["api_key"] = api_key
-            if self._settings.fallback_models and not api_key:
-                call_kwargs["fallbacks"] = self._settings.fallback_models
+            effective_fallbacks = fallback_models or self._settings.fallback_models
+            if effective_fallbacks and not api_key:
+                call_kwargs["fallbacks"] = list(effective_fallbacks)
 
             response = await litellm.acompletion(**call_kwargs)
             async for chunk in response:
@@ -169,6 +176,72 @@ class LLMClient:
             raise UpstreamError(f"LLM authentication failed: {e}") from e
         except Exception as e:
             raise UpstreamError(f"LLM stream failed: {e}") from e
+
+    async def respond(
+        self,
+        model: str,
+        input_: str | list[dict],
+        *,
+        max_output_tokens: int | None = None,
+        trace_metadata: dict | None = None,
+        api_key: str | None = None,
+        fallback_models: list[str] | tuple[str, ...] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Call LiteLLM's native Responses API adapter."""
+        try:
+            call_kwargs: dict[str, Any] = {
+                "model": model,
+                "input": input_,
+                "max_output_tokens": self._max_tokens_for(model, max_output_tokens),
+                "metadata": trace_metadata or {},
+                **kwargs,
+            }
+            if api_key:
+                call_kwargs["api_key"] = api_key
+            effective_fallbacks = fallback_models or self._settings.fallback_models
+            if effective_fallbacks and not api_key:
+                call_kwargs["fallbacks"] = list(effective_fallbacks)
+            return await litellm.aresponses(**call_kwargs)
+        except litellm.exceptions.AuthenticationError as exc:
+            raise UpstreamError(f"Responses API authentication failed: {exc}") from exc
+        except litellm.exceptions.NotFoundError as exc:
+            raise ModelNotAllowedError(f"Model not found upstream: {exc}") from exc
+        except Exception as exc:
+            raise UpstreamError(f"Responses API request failed: {exc}") from exc
+
+    async def response_stream(
+        self,
+        model: str,
+        input_: str | list[dict],
+        *,
+        max_output_tokens: int | None = None,
+        trace_metadata: dict | None = None,
+        api_key: str | None = None,
+        fallback_models: list[str] | tuple[str, ...] | None = None,
+        **kwargs: Any,
+    ) -> AsyncGenerator[Any, None]:
+        try:
+            call_kwargs: dict[str, Any] = {
+                "model": model,
+                "input": input_,
+                "max_output_tokens": self._max_tokens_for(model, max_output_tokens),
+                "metadata": trace_metadata or {},
+                "stream": True,
+                **kwargs,
+            }
+            if api_key:
+                call_kwargs["api_key"] = api_key
+            effective_fallbacks = fallback_models or self._settings.fallback_models
+            if effective_fallbacks and not api_key:
+                call_kwargs["fallbacks"] = list(effective_fallbacks)
+            stream = await litellm.aresponses(**call_kwargs)
+            async for event in stream:
+                yield event
+        except litellm.exceptions.AuthenticationError as exc:
+            raise UpstreamError(f"Responses API authentication failed: {exc}") from exc
+        except Exception as exc:
+            raise UpstreamError(f"Responses API stream failed: {exc}") from exc
 
 
 _client: LLMClient | None = None

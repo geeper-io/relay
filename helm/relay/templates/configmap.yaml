@@ -46,6 +46,34 @@ data:
         {{- end }}
         {{- else }} {}
         {{- end }}
+      deployments:
+        {{- toYaml .Values.config.llm.deployments | nindent 8 }}
+
+    routing:
+      active_policy_version: {{ .Values.config.routing.activePolicyVersion | quote }}
+      require_declared_capabilities: {{ .Values.config.routing.requireDeclaredCapabilities }}
+      policies:
+        {{- toYaml .Values.config.routing.policies | nindent 8 }}
+
+    responses:
+      default_store: {{ .Values.config.responses.defaultStore }}
+
+    telemetry:
+      enabled: {{ .Values.config.telemetry.enabled }}
+      service_name: {{ .Values.config.telemetry.serviceName | quote }}
+      otlp_endpoint: {{ .Values.config.telemetry.otlpEndpoint | quote }}
+      otlp_headers: {{ toJson .Values.config.telemetry.otlpHeaders }}
+      sample_ratio: {{ .Values.config.telemetry.sampleRatio }}
+
+    oidc:
+      scopes: {{ toJson .Values.config.oidc.scopes }}
+      subject_claim: {{ .Values.config.oidc.subjectClaim | quote }}
+      email_claim: {{ .Values.config.oidc.emailClaim | quote }}
+      name_claim: {{ .Values.config.oidc.nameClaim | quote }}
+      require_verified_email: {{ .Values.config.oidc.requireVerifiedEmail }}
+      allowed_email_domains: {{ toJson .Values.config.oidc.allowedEmailDomains }}
+      default_key_scopes: {{ toJson .Values.config.oidc.defaultKeyScopes }}
+      token_endpoint_auth_method: {{ .Values.config.oidc.tokenEndpointAuthMethod | quote }}
 
     rag:
       enabled: {{ .Values.config.rag.enabled }}

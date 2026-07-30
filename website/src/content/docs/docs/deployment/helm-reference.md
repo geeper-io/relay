@@ -32,6 +32,13 @@ Non-secret settings mounted as `/app/config/config.yaml`:
 | `config.llm.fallbackModels` | `[]` | Fallback chain on provider error |
 | `config.llm.modelAliases` | `{}` | Alias → canonical model map |
 | `config.llm.perModelMaxTokens` | `{}` | Per-model output token caps |
+| `config.llm.deployments` | `{}` | Logical deployments with capabilities and fallbacks |
+| `config.routing.activePolicyVersion` | `"default"` | Active immutable policy version |
+| `config.routing.requireDeclaredCapabilities` | `false` | Fail closed for undeclared model capabilities |
+| `config.routing.policies` | `{}` | Versioned routing policy map |
+| `config.responses.defaultStore` | `false` | Provider-side Responses storage default |
+| `config.telemetry.enabled` | `false` | Enable OpenTelemetry |
+| `config.telemetry.otlpEndpoint` | `""` | OTLP/HTTP traces endpoint |
 | `config.rag.enabled` | `true` | Enable RAG |
 | `config.rag.topK` | `5` | Top-k chunks |
 | `config.rag.scoreThreshold` | `0.4` | Min similarity score |
@@ -68,6 +75,9 @@ Non-secret settings mounted as `/app/config/config.yaml`:
 | `secrets.googleClientId` | `""` | |
 | `secrets.googleClientSecret` | `""` | |
 | `secrets.authBaseUrl` | `""` | e.g. `https://proxy.internal` |
+| `secrets.oidcIssuerUrl` | `""` | OIDC issuer used for discovery |
+| `secrets.oidcClientId` | `""` | OIDC client ID |
+| `secrets.oidcClientSecret` | `""` | OIDC client secret |
 | `secrets.langfusePublicKey` | `""` | |
 | `secrets.langfuseSecretKey` | `""` | |
 | `secrets.langfuseHost` | `""` | Empty = Langfuse Cloud |

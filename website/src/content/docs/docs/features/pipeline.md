@@ -66,7 +66,7 @@ Client request
 - Extracts the API key from `Authorization: Bearer`
 - Looks up key hash in the database (SHA-256 comparison)
 - Resolves associated user and team
-- Rejects expired or inactive keys and enforces the endpoint capability scope (`chat` or `embeddings`)
+- Rejects expired or inactive keys and enforces the endpoint capability scope (`chat`, `responses`, or `embeddings`)
 - Attaches user/team context to the request for downstream stages
 - **Rejects with 401** if key is missing, unknown, or revoked
 

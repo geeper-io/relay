@@ -46,6 +46,27 @@ prometheus:
 | `relay_cache_hits_total` | Counter | `model` |
 | `relay_pii_entities_scrubbed_total` | Counter | — |
 | `relay_content_policy_blocks_total` | Counter | — |
+| `relay_routing_decisions_total` | Counter | `deployment`, `policy_version`, `endpoint` |
+
+## OpenTelemetry
+
+Enable OTLP/HTTP trace export:
+
+```yaml
+telemetry:
+  enabled: true
+  service_name: geeper-relay
+  otlp_endpoint: https://otel-collector.internal/v1/traces
+  otlp_headers:
+    X-Tenant: relay
+  sample_ratio: 0.25
+```
+
+Relay instruments inbound FastAPI requests and outbound HTTPX calls. Inference spans include requested/physical model,
+deployment alias, policy version, endpoint, user ID, and team ID. The active OpenTelemetry trace/span IDs are also
+attached to Langfuse metadata when both integrations are enabled.
+Supply sensitive exporter credentials through the `TELEMETRY__OTLP_HEADERS` environment variable or your secret
+management layer rather than committing them to YAML.
 
 ## Grafana
 

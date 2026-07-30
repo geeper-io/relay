@@ -58,6 +58,23 @@ class Settings(BaseSettings):
     ]
     llm__model_aliases: dict[str, str] = {}
     llm__per_model_max_tokens: dict[str, int] = {}
+    llm__deployments: dict[str, dict[str, Any]] = {}
+
+    # Versioned capability-routing policies. Existing direct model IDs remain
+    # backward compatible when no deployments or policies are configured.
+    routing__active_policy_version: str = "default"
+    routing__require_declared_capabilities: bool = False
+    routing__policies: dict[str, dict[str, Any]] = {}
+
+    # Responses API: enterprise-safe default avoids provider-side response storage.
+    responses__default_store: bool = False
+
+    # OpenTelemetry (optional OTLP export)
+    telemetry__enabled: bool = False
+    telemetry__service_name: str = "geeper-relay"
+    telemetry__otlp_endpoint: str = ""
+    telemetry__otlp_headers: dict[str, str] = {}
+    telemetry__sample_ratio: float = 1.0
 
     # Provider keys
     openai_api_key: str = ""
@@ -138,6 +155,20 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     auth_base_url: str = "http://localhost:8000"
 
+    # General OpenID Connect portal. When issuer_url is set it supersedes the
+    # legacy Google endpoints above and uses provider discovery.
+    oidc__issuer_url: str = ""
+    oidc__client_id: str = ""
+    oidc__client_secret: str = ""
+    oidc__scopes: list[str] = ["openid", "email", "profile"]
+    oidc__subject_claim: str = "sub"
+    oidc__email_claim: str = "email"
+    oidc__name_claim: str = "name"
+    oidc__require_verified_email: bool = True
+    oidc__allowed_email_domains: list[str] = []
+    oidc__default_key_scopes: list[str] = ["chat", "responses"]
+    oidc__token_endpoint_auth_method: str = "client_secret_post"
+
     # Code review — repo auto-sync
     # GitHub: set token to enable. orgs/exclude are optional filters.
     code_review__github__token: str = ""
@@ -197,6 +228,46 @@ class Settings(BaseSettings):
     @property
     def model_aliases(self) -> dict[str, str]:
         return self.llm__model_aliases
+
+    @property
+    def deployments(self) -> dict[str, dict[str, Any]]:
+        return self.llm__deployments
+
+    @property
+    def active_policy_version(self) -> str:
+        return self.routing__active_policy_version
+
+    @property
+    def require_declared_capabilities(self) -> bool:
+        return self.routing__require_declared_capabilities
+
+    @property
+    def routing_policies(self) -> dict[str, dict[str, Any]]:
+        return self.routing__policies
+
+    @property
+    def responses_default_store(self) -> bool:
+        return self.responses__default_store
+
+    @property
+    def telemetry_enabled(self) -> bool:
+        return self.telemetry__enabled
+
+    @property
+    def telemetry_service_name(self) -> str:
+        return self.telemetry__service_name
+
+    @property
+    def telemetry_otlp_endpoint(self) -> str:
+        return self.telemetry__otlp_endpoint
+
+    @property
+    def telemetry_otlp_headers(self) -> dict[str, str]:
+        return self.telemetry__otlp_headers
+
+    @property
+    def telemetry_sample_ratio(self) -> float:
+        return self.telemetry__sample_ratio
 
     @property
     def rag_enabled(self) -> bool:
@@ -316,7 +387,9 @@ class Settings(BaseSettings):
 
     @property
     def oauth_enabled(self) -> bool:
-        return bool(self.google_client_id and self.google_client_secret)
+        oidc_enabled = bool(self.oidc__issuer_url and self.oidc__client_id and self.oidc__client_secret)
+        google_enabled = bool(self.google_client_id and self.google_client_secret)
+        return oidc_enabled or google_enabled
 
     @property
     def github_token(self) -> str:

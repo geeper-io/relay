@@ -21,7 +21,16 @@ async def list_models(
         except Exception:
             models = []
 
+    deployment_aliases = list(settings.deployments)
+    visible_models = list(dict.fromkeys([*deployment_aliases, *models]))
     return {
         "object": "list",
-        "data": [{"id": m, "object": "model", "owned_by": "proxy"} for m in models],
+        "data": [
+            {
+                "id": model,
+                "object": "model",
+                "owned_by": "relay" if model in settings.deployments else "proxy",
+            }
+            for model in visible_models
+        ],
     }

@@ -54,6 +54,32 @@ config:
     # perModelMaxTokens:
     #   gpt-4o: 8192
     perModelMaxTokens: {}
+    deployments: {}
+
+  routing:
+    activePolicyVersion: "default"
+    requireDeclaredCapabilities: false
+    policies: {}
+
+  responses:
+    defaultStore: false
+
+  telemetry:
+    enabled: false
+    serviceName: "geeper-relay"
+    otlpEndpoint: ""
+    otlpHeaders: {}
+    sampleRatio: 1.0
+
+  oidc:
+    scopes: [openid, email, profile]
+    subjectClaim: sub
+    emailClaim: email
+    nameClaim: name
+    requireVerifiedEmail: true
+    allowedEmailDomains: []
+    defaultKeyScopes: [chat, responses]
+    tokenEndpointAuthMethod: client_secret_post
 
   rag:
     enabled: true
@@ -153,6 +179,9 @@ secrets:
   googleClientId: ""
   googleClientSecret: ""
   authBaseUrl: ""                    # e.g. https://relay.internal
+  oidcIssuerUrl: ""
+  oidcClientId: ""
+  oidcClientSecret: ""
 
   # Langfuse analytics
   langfusePublicKey: ""

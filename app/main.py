@@ -25,6 +25,7 @@ from app.rag.embedder import init_embedder
 from app.rag.repo_discovery import auto_sync_repos
 from app.rag.retriever import init_retriever
 from app.rag.vector_store import init_vector_store
+from app.telemetry import init_telemetry, shutdown_telemetry
 
 log = structlog.get_logger()
 
@@ -119,6 +120,7 @@ async def lifespan(app: FastAPI):
 
     refresh_task.cancel()
     await rate_limiter.close()
+    shutdown_telemetry()
     log.info("Shutting down Geeper Relay")
 
 
@@ -164,12 +166,14 @@ def create_app() -> FastAPI:
     from app.api.v1.health import router as health_router
     from app.api.v1.messages import router as messages_router
     from app.api.v1.models import router as models_router
+    from app.api.v1.responses import router as responses_router
 
     app.include_router(health_router)
     app.include_router(chat_router, prefix="/v1")
     app.include_router(embeddings_router, prefix="/v1")
     app.include_router(messages_router, prefix="/v1")
     app.include_router(models_router, prefix="/v1")
+    app.include_router(responses_router, prefix="/v1")
     app.include_router(admin_router, prefix="/internal")
     app.include_router(kb_router, prefix="/internal")
     app.include_router(auth_router)
@@ -177,6 +181,8 @@ def create_app() -> FastAPI:
     # Prometheus metrics endpoint
     metrics_dependencies = [Depends(require_admin)] if settings.metrics_require_auth else []
     app.get("/metrics", include_in_schema=False, dependencies=metrics_dependencies)(metrics_response)
+
+    init_telemetry(app, settings)
 
     return app
 

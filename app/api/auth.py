@@ -1,4 +1,4 @@
-"""Google OAuth 2.0 login portal.
+"""OpenID Connect login portal with backward-compatible Google defaults.
 
 Flow:
   GET /auth/login     → redirect to Google consent screen
@@ -55,27 +55,74 @@ def _verify_state(state: str, secret: str) -> bool:
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 
+async def _provider_config(settings: Settings, client: httpx.AsyncClient) -> dict:
+    if settings.oidc__issuer_url:
+        issuer = settings.oidc__issuer_url.rstrip("/")
+        response = await client.get(f"{issuer}/.well-known/openid-configuration")
+        if response.status_code != 200:
+            raise HTTPException(status_code=502, detail="OIDC discovery failed")
+        config = response.json()
+        discovered_issuer = str(config.get("issuer", "")).rstrip("/")
+        if discovered_issuer != issuer:
+            raise HTTPException(status_code=502, detail="OIDC discovery issuer mismatch")
+        required = ("authorization_endpoint", "token_endpoint", "userinfo_endpoint")
+        if any(not config.get(field) for field in required):
+            raise HTTPException(status_code=502, detail="OIDC discovery document is missing required endpoints")
+        return config
+    return {
+        "issuer": "https://accounts.google.com",
+        "authorization_endpoint": _GOOGLE_AUTH_URL,
+        "token_endpoint": _GOOGLE_TOKEN_URL,
+        "userinfo_endpoint": _GOOGLE_USERINFO_URL,
+    }
+
+
+def _client_credentials(settings: Settings) -> tuple[str, str]:
+    if settings.oidc__issuer_url:
+        return settings.oidc__client_id, settings.oidc__client_secret
+    return settings.google_client_id, settings.google_client_secret
+
+
+def _identity_claims(settings: Settings, userinfo: dict) -> tuple[str, str, str]:
+    subject = userinfo.get(settings.oidc__subject_claim) or userinfo.get("id")
+    email = str(userinfo.get(settings.oidc__email_claim, ""))
+    name = str(userinfo.get(settings.oidc__name_claim) or email or subject or "OIDC user")
+    if not subject:
+        raise HTTPException(status_code=502, detail="Could not identify OIDC subject")
+
+    verified_email = userinfo.get("email_verified", userinfo.get("verified_email"))
+    if settings.oidc__require_verified_email and settings.oidc__issuer_url and verified_email is not True:
+        raise HTTPException(status_code=403, detail="Identity provider did not provide a verified email")
+    if settings.oidc__allowed_email_domains:
+        domain = email.rsplit("@", 1)[-1].lower() if "@" in email else ""
+        allowed_domains = {item.lower() for item in settings.oidc__allowed_email_domains}
+        if domain not in allowed_domains:
+            raise HTTPException(status_code=403, detail="Email domain is not allowed")
+    return str(subject), email, name
+
+
 @router.get("/auth/login", include_in_schema=False)
 async def login(settings: Settings = Depends(get_settings)):
     if not settings.oauth_enabled:
         raise HTTPException(
             status_code=501,
-            detail="Google OAuth is not configured on this proxy",
+            detail="OpenID Connect is not configured on this proxy",
         )
 
     state = _make_state(settings.proxy_master_key)
     redirect_uri = f"{settings.auth_base_url.rstrip('/')}/auth/callback"
+    client_id, _client_secret = _client_credentials(settings)
+    async with httpx.AsyncClient() as client:
+        provider = await _provider_config(settings, client)
 
     params = {
-        "client_id": settings.google_client_id,
+        "client_id": client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": "openid email profile",
+        "scope": " ".join(settings.oidc__scopes),
         "state": state,
-        "access_type": "online",
-        "prompt": "select_account",
     }
-    return RedirectResponse(f"{_GOOGLE_AUTH_URL}?{urlencode(params)}")
+    return RedirectResponse(f"{provider['authorization_endpoint']}?{urlencode(params)}")
 
 
 @router.get("/auth/callback", include_in_schema=False)
@@ -86,27 +133,31 @@ async def oauth_callback(
     db: AsyncSession = Depends(get_db),
 ):
     if not settings.oauth_enabled:
-        raise HTTPException(status_code=501, detail="Google OAuth is not configured")
+        raise HTTPException(status_code=501, detail="OpenID Connect is not configured")
 
     if not _verify_state(state, settings.proxy_master_key):
         raise HTTPException(status_code=400, detail="Invalid OAuth state — please try again")
 
     redirect_uri = f"{settings.auth_base_url.rstrip('/')}/auth/callback"
+    client_id, client_secret = _client_credentials(settings)
 
     async with httpx.AsyncClient() as client:
+        provider = await _provider_config(settings, client)
         # Exchange authorization code for tokens
-        token_resp = await client.post(
-            _GOOGLE_TOKEN_URL,
-            data={
-                "code": code,
-                "client_id": settings.google_client_id,
-                "client_secret": settings.google_client_secret,
-                "redirect_uri": redirect_uri,
-                "grant_type": "authorization_code",
-            },
-        )
+        token_data = {
+            "code": code,
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "grant_type": "authorization_code",
+        }
+        token_auth = None
+        if settings.oidc__token_endpoint_auth_method == "client_secret_basic":
+            token_auth = httpx.BasicAuth(client_id, client_secret)
+        else:
+            token_data["client_secret"] = client_secret
+        token_resp = await client.post(provider["token_endpoint"], data=token_data, auth=token_auth)
         if token_resp.status_code != 200:
-            raise HTTPException(status_code=502, detail="Token exchange with Google failed")
+            raise HTTPException(status_code=502, detail="Token exchange with identity provider failed")
 
         access_token = token_resp.json().get("access_token")
         if not access_token:
@@ -114,7 +165,7 @@ async def oauth_callback(
 
         # Fetch user profile
         userinfo_resp = await client.get(
-            _GOOGLE_USERINFO_URL,
+            provider["userinfo_endpoint"],
             headers={"Authorization": f"Bearer {access_token}"},
         )
         if userinfo_resp.status_code != 200:
@@ -122,22 +173,26 @@ async def oauth_callback(
 
         userinfo = userinfo_resp.json()
 
-    google_sub = userinfo.get("id") or userinfo.get("sub")
-    email = userinfo.get("email", "")
-    name = userinfo.get("name") or email
+    subject, email, name = _identity_claims(settings, userinfo)
 
-    if not google_sub:
-        raise HTTPException(status_code=502, detail="Could not identify Google account")
-
-    # Find or create user (keyed by stable Google account ID)
-    external_id = f"google:{google_sub}"
+    if settings.oidc__issuer_url:
+        issuer_hash = hashlib.sha256(str(provider["issuer"]).encode()).hexdigest()[:16]
+        external_id = f"oidc:{issuer_hash}:{subject}"
+    else:
+        external_id = f"google:{subject}"
     user = await get_user_by_external_id(db, external_id)
     is_new = user is None
     if user is None:
         user = await create_user(db, external_id=external_id)
 
     # Issue a fresh API key on every login
-    raw_key, _api_key = await create_api_key(db, user_id=user.id, name="sso", actor="sso")
+    raw_key, _api_key = await create_api_key(
+        db,
+        user_id=user.id,
+        name="sso",
+        scopes=settings.oidc__default_key_scopes,
+        actor=f"oidc:{provider['issuer']}",
+    )
 
     return HTMLResponse(_key_page(name=name, email=email, raw_key=raw_key, is_new=is_new))
 

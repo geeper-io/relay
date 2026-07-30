@@ -60,7 +60,7 @@ async def resolve_identity(
             user_id=f"passthrough:{key_hash[:16]}",
             team_id=None,
             key_id=None,
-            scopes=["chat", "embeddings"],
+            scopes=["chat", "responses", "embeddings"],
             passthrough_key=raw_key,
         )
 

@@ -28,6 +28,13 @@ aiosqlite>=0.20.0
 # Metrics
 prometheus-client>=0.20.0
 
+# OpenTelemetry (optional OTLP export, enabled by config)
+opentelemetry-api>=1.25.0
+opentelemetry-sdk>=1.25.0
+opentelemetry-exporter-otlp-proto-http>=1.25.0
+opentelemetry-instrumentation-fastapi>=0.46b0
+opentelemetry-instrumentation-httpx>=0.46b0
+
 # Rate limiting (optional Redis backend)
 redis[hiredis]>=5.0.0
 
@@ -37,4 +44,3 @@ httpx>=0.27.0
 tenacity>=8.3.0
 structlog>=24.1.0
 cachetools>=5.3.0
-

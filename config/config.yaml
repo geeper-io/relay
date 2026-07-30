@@ -30,6 +30,54 @@ llm:
     claude-3-5-sonnet-20241022: 8192
     claude-3-haiku-20240307: 4096
 
+  # Logical deployment aliases can point to any LiteLLM model/provider.
+  # Clients request the alias; Relay verifies the required capabilities.
+  deployments: {}
+  # deployments:
+  #   general:
+  #     model: "gpt-4o"
+  #     capabilities: [chat, responses, streaming, tools, structured_outputs]
+  #     fallback_models: ["claude-3-5-sonnet-20241022"]
+  #   vision:
+  #     model: "gpt-4o"
+  #     capabilities: [chat, responses, streaming, vision]
+
+routing:
+  active_policy_version: "default"
+  require_declared_capabilities: false
+  policies: {}
+  # policies:
+  #   "2026-07-30":
+  #     default_deployment: general
+  #     allowed_deployments: [general, vision]
+  #     allowed_capabilities: [chat, responses, embeddings, streaming, tools, vision, structured_outputs]
+  #     capability_routes:
+  #       vision: vision
+
+responses:
+  # Provider-side response storage is opt-in for enterprise privacy.
+  default_store: false
+
+telemetry:
+  enabled: false
+  service_name: "geeper-relay"
+  otlp_endpoint: ""
+  otlp_headers: {}
+  sample_ratio: 1.0
+
+oidc:
+  issuer_url: ""
+  client_id: ""
+  client_secret: ""
+  scopes: [openid, email, profile]
+  subject_claim: sub
+  email_claim: email
+  name_claim: name
+  require_verified_email: true
+  allowed_email_domains: []
+  default_key_scopes: [chat, responses]
+  token_endpoint_auth_method: client_secret_post
+
 rag:
   enabled: true
   top_k: 5

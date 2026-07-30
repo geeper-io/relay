@@ -1,9 +1,32 @@
 ---
-title: Google SSO
-description: Self-service API key provisioning via Google OAuth 2.0.
+title: OIDC & Google SSO
+description: Self-service API key provisioning with any OpenID Connect provider or legacy Google configuration.
 ---
 
-When Google OAuth credentials are configured, users can visit `/auth/login`, sign in with their Google account, and receive an API key — no admin intervention needed.
+Relay supports provider discovery for Okta, Entra ID, Keycloak, Auth0, Dex, and other OpenID Connect providers. The
+existing Google-specific variables remain supported as a compatibility fallback.
+
+## General OIDC
+
+```bash
+OIDC__ISSUER_URL=https://id.example.com
+OIDC__CLIENT_ID=relay
+OIDC__CLIENT_SECRET=...
+AUTH_BASE_URL=https://proxy.internal
+```
+
+The issuer's `/.well-known/openid-configuration` must match the configured issuer and provide authorization, token,
+and userinfo endpoints. Configure optional claim/domain/key-scope controls in YAML:
+
+```yaml
+oidc:
+  allowed_email_domains: [example.com]
+  require_verified_email: true
+  default_key_scopes: [chat, responses]
+  token_endpoint_auth_method: client_secret_post # or client_secret_basic
+```
+
+## Google compatibility configuration
 
 ## Setup
 
@@ -69,14 +92,14 @@ This is **stateless** — no server-side session storage is required. It works c
 ## Key management
 
 - Each login creates a **new** key named `sso` — it does not replace the previous one
-- SSO keys receive the default `chat` scope and no RAG repository access
+- SSO keys receive configured `oidc.default_key_scopes` (`chat` and `responses` by default) and no RAG access
 - Existing keys remain valid until expiry or revocation through `DELETE /internal/api-keys/{key_id}`
 - Administrators can find SSO key IDs with `GET /internal/api-keys?user_id={user_id}`
 - The key is displayed once in the callback HTML page — users should save it immediately
 
 ## Disabling
 
-OAuth is disabled automatically when `GOOGLE_CLIENT_ID` is empty. The `/auth/login` endpoint returns 501.
+Login is disabled when neither complete OIDC nor Google credentials are configured. `/auth/login` then returns 501.
 
 ## Restricting to a specific domain
 

@@ -105,6 +105,24 @@ class PIIScrubber:
 
         return scrubbed_messages, restoration_map, total
 
+    def scrub_text_values(self, values: list[str]) -> tuple[list[str], dict[str, str], int]:
+        """Scrub arbitrary text fields while sharing placeholders across the request."""
+        if not self._enabled:
+            return values, {}, 0
+
+        restoration_map: dict[str, str] = {}
+        original_to_placeholder: dict[str, str] = {}
+        scrubbed: list[str] = []
+        total = 0
+        for value in values:
+            if not value or _DIFF_RE.search(value):
+                scrubbed.append(value)
+                continue
+            scrubbed_value, count = self._scrub_text(value, restoration_map, original_to_placeholder)
+            scrubbed.append(scrubbed_value)
+            total += count
+        return scrubbed, restoration_map, total
+
     def _scrub_text(
         self,
         text: str,

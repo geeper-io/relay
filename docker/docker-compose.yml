@@ -9,6 +9,10 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - PROXY_MASTER_KEY=${PROXY_MASTER_KEY:?set PROXY_MASTER_KEY in .env}
+      - OIDC__ISSUER_URL=${OIDC__ISSUER_URL:-}
+      - OIDC__CLIENT_ID=${OIDC__CLIENT_ID:-}
+      - OIDC__CLIENT_SECRET=${OIDC__CLIENT_SECRET:-}
+      - AUTH_BASE_URL=${AUTH_BASE_URL:-http://localhost:8000}
       - DATABASE_URL=postgresql+asyncpg://proxy:proxy@postgres:5432/relay
       # Langfuse analytics — remove or leave blank to disable
 #      - ANALYTICS__ENABLED=${ANALYTICS__ENABLED:-false}

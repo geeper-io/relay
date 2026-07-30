@@ -29,6 +29,7 @@ Helm: `config.workers`, `config.logLevel`, `config.allowPassthroughKeys`, `confi
 | `fallback_models` | list | `[]` | Tried in order when the primary model returns an error |
 | `model_aliases` | map | `{}` | e.g. `gpt-4: gpt-4o` — rewrite model names before routing |
 | `per_model_max_tokens` | map | `{}` | Override max output tokens per model |
+| `deployments` | map | `{}` | Logical alias → model, capabilities, and fallback chain |
 
 Default `allowed_models`:
 ```yaml
@@ -39,6 +40,45 @@ Default `allowed_models`:
 ```
 
 Helm: `config.llm.*`
+
+## `routing`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `active_policy_version` | string | `"default"` | Policy snapshot applied to new requests |
+| `require_declared_capabilities` | bool | `false` | Reject direct/undeclared models when capabilities are requested |
+| `policies` | map | `{}` | Versioned deployment allowlists, capability rules, routes, and team overrides |
+
+See [Deployment and policy routing](/docs/features/routing).
+
+## `responses`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `default_store` | bool | `false` | Default provider-side storage behavior for `/v1/responses` |
+
+## `telemetry`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | bool | `false` | Enable OpenTelemetry FastAPI and HTTPX instrumentation |
+| `service_name` | string | `"geeper-relay"` | OTLP resource service name |
+| `otlp_endpoint` | string | `""` | OTLP/HTTP traces endpoint |
+| `otlp_headers` | map | `{}` | OTLP exporter headers |
+| `sample_ratio` | float | `1.0` | Parent-based trace sampling ratio |
+
+## `oidc`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `issuer_url` | string | `""` | OIDC issuer; enables discovery when credentials are present |
+| `scopes` | list | `[openid,email,profile]` | Authorization request scopes |
+| `require_verified_email` | bool | `true` | Require a verified-email claim for general OIDC |
+| `allowed_email_domains` | list | `[]` | Optional sign-in domain allowlist |
+| `default_key_scopes` | list | `[chat,responses]` | Scopes granted to self-service SSO keys |
+| `token_endpoint_auth_method` | string | `client_secret_post` | `client_secret_post` or `client_secret_basic` |
+
+Client ID/secret should be supplied through `OIDC__CLIENT_ID` and `OIDC__CLIENT_SECRET` or the equivalent Helm Secret.
 
 ## `rag`
 
@@ -139,6 +179,22 @@ llm:
   fallback_models: []
   model_aliases: {}
   per_model_max_tokens: {}
+  deployments: {}
+
+routing:
+  active_policy_version: default
+  require_declared_capabilities: false
+  policies: {}
+
+responses:
+  default_store: false
+
+telemetry:
+  enabled: false
+  service_name: geeper-relay
+  otlp_endpoint: ""
+  otlp_headers: {}
+  sample_ratio: 1.0
 
 rag:
   enabled: true

@@ -87,12 +87,15 @@ def build_trace_metadata(
     if stream:
         tags.append("stream:true")
 
+    from app.telemetry import current_trace_context
+
     metadata = {
         "trace_id": request_id,
         "session_id": request_id,
         "trace_user_id": user_id,
         "tags": tags,
         "generation_name": "chat_completion",
+        **current_trace_context(),
     }
     if extra:
         metadata.update(extra)

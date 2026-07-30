@@ -23,6 +23,7 @@ export default defineConfig({
           items: [
             { label: "Overview", slug: "docs/api-reference/overview" },
             { label: "Chat Completions", slug: "docs/api-reference/chat-completions" },
+            { label: "Responses", slug: "docs/api-reference/responses" },
             { label: "Embeddings", slug: "docs/api-reference/embeddings" },
             { label: "Messages", slug: "docs/api-reference/messages" },
             { label: "Models", slug: "docs/api-reference/models" },
@@ -40,6 +41,8 @@ export default defineConfig({
             { label: "Code Review", slug: "docs/features/code-review" },
             { label: "Caching", slug: "docs/features/caching" },
             { label: "Analytics", slug: "docs/features/analytics" },
+            { label: "Routing Policies", slug: "docs/features/routing" },
+            { label: "Evaluation Harness", slug: "docs/features/evaluations" },
           ],
         },
         {
@@ -48,7 +51,7 @@ export default defineConfig({
             { label: "Teams & Keys", slug: "docs/admin/teams-and-keys" },
             { label: "Knowledge Base", slug: "docs/admin/knowledge-base" },
             { label: "Usage Reporting", slug: "docs/admin/usage-reporting" },
-            { label: "Google SSO", slug: "docs/admin/google-sso" },
+            { label: "OIDC & Google SSO", slug: "docs/admin/google-sso" },
           ],
         },
         {

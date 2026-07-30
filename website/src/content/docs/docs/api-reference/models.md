@@ -40,7 +40,8 @@ Authorization: Bearer <api-key>
 }
 ```
 
-The list is derived from `config.yaml` → `llm.allowed_models`. Model aliases are **not** included — only the canonical names.
+The list combines `llm.deployments` aliases with canonical models from `llm.allowed_models`. Deployment aliases are
+marked `owned_by: "relay"`; canonical models remain `owned_by: "proxy"`.
 
 ## Model aliases
 
@@ -53,4 +54,8 @@ llm:
     claude: claude-3-5-sonnet-20241022
 ```
 
-Requests using the alias (`gpt-4`) are silently rewritten to the target (`gpt-4o`) before routing. Aliases do not appear in `GET /v1/models`.
+Requests using the legacy alias (`gpt-4`) are silently rewritten to the target (`gpt-4o`) before routing. Legacy
+aliases do not appear in `GET /v1/models`.
+
+Legacy `model_aliases` rewrites remain hidden. Prefer declared `deployments` for new configurations because they are
+visible to clients and carry capability/fallback metadata enforced by versioned routing policies.

@@ -94,6 +94,14 @@ POLICY_BLOCKS = Counter(
     "Requests blocked by content policy",
 )
 
+# ── Routing ──────────────────────────────────────────────────────────────────
+
+ROUTING_DECISIONS = Counter(
+    "relay_routing_decisions_total",
+    "Versioned model-routing decisions",
+    ["deployment", "policy_version", "endpoint"],
+)
+
 
 def metrics_response():
     """Returns a FastAPI Response with the current Prometheus metrics."""

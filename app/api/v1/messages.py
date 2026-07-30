@@ -22,6 +22,7 @@ from app.core.auth import ResolvedIdentity, rag_filter_for_identity, require_sco
 from app.core.content_policy import ContentPolicy, get_content_policy
 from app.core.exceptions import ProxyError
 from app.core.rate_limiter import RateLimiter, get_rate_limiter
+from app.core.routing import RoutingDecision
 from app.db.repositories.usage import record_usage
 from app.llm.client import LLMClient, get_llm_client
 from app.metrics import prometheus as m
@@ -29,6 +30,7 @@ from app.pii.restorer import PIIRestorer, get_restorer
 from app.pii.scrubber import PIIScrubber, get_scrubber
 from app.rag.retriever import RAGRetriever, get_retriever
 from app.schemas.anthropic import (
+    AnthropicImageBlock,
     AnthropicRequest,
     AnthropicTextBlock,
     _finish_reason_to_stop_reason,
@@ -38,8 +40,23 @@ from app.schemas.anthropic import (
     openai_response_to_anthropic,
 )
 from app.schemas.openai import ChatMessage as OAIMessage
+from app.telemetry import annotate_current_span
 
 router = APIRouter(tags=["messages"])
+
+
+def _message_capabilities(request: AnthropicRequest) -> set[str]:
+    capabilities = {"chat"}
+    if request.stream:
+        capabilities.add("streaming")
+    if request.tools:
+        capabilities.add("tools")
+    if any(
+        isinstance(message.content, list) and any(isinstance(block, AnthropicImageBlock) for block in message.content)
+        for message in request.messages
+    ):
+        capabilities.add("vision")
+    return capabilities
 
 
 def _msg_text(msg) -> str:
@@ -69,10 +86,32 @@ async def messages(
     request_id = raw_request.headers.get("x-request-id", str(uuid.uuid4()))
     start_time = time.monotonic()
     model = request_body.model or settings.default_model
+    decision: RoutingDecision | None = None
 
     m.ACTIVE_REQUESTS.inc()
     try:
-        model = llm_client.resolve_model(model)
+        decision = llm_client.route(
+            model,
+            required_capabilities=_message_capabilities(request_body),
+            team_id=identity.team_id,
+        )
+        model = decision.model
+        annotate_current_span(
+            **{
+                "relay.requested_model": decision.requested_model,
+                "relay.model": decision.model,
+                "relay.deployment": decision.deployment or "direct",
+                "relay.policy.version": decision.policy_version,
+                "relay.endpoint": "messages",
+                "relay.user_id": identity.user_id,
+                "relay.team_id": identity.team_id,
+            }
+        )
+        m.ROUTING_DECISIONS.labels(
+            deployment=decision.deployment or "direct",
+            policy_version=decision.policy_version,
+            endpoint="messages",
+        ).inc()
         # 1. Content policy check
         policy_msgs = [OAIMessage(role="user", content=_msg_text(msg)) for msg in request_body.messages]
         if request_body.system:
@@ -134,6 +173,7 @@ async def messages(
             llm_kwargs["stop"] = request_body.stop_sequences
         if identity.passthrough_key:
             llm_kwargs["api_key"] = identity.passthrough_key
+        llm_kwargs["fallback_models"] = decision.fallback_models
 
         trace_metadata = build_trace_metadata(
             user_id=identity.user_id,
@@ -142,6 +182,11 @@ async def messages(
             model=model,
             rag_used=rag_used,
             stream=request_body.stream,
+            extra={
+                "endpoint": "messages",
+                "deployment": decision.deployment,
+                "policy_version": decision.policy_version,
+            },
         )
 
         if request_body.stream:
@@ -161,10 +206,15 @@ async def messages(
                     rate_limiter=rate_limiter,
                     estimated_tokens=estimated_tokens,
                     trace_metadata=trace_metadata,
+                    decision=decision,
                     **llm_kwargs,
                 ),
                 media_type="text/event-stream",
-                headers={"X-Request-ID": request_id},
+                headers={
+                    "X-Request-ID": request_id,
+                    "X-Relay-Deployment": decision.deployment or "direct",
+                    "X-Relay-Policy-Version": decision.policy_version,
+                },
             )
 
         response = await llm_client.complete(
@@ -223,15 +273,18 @@ async def messages(
                 was_rag_used=rag_used,
                 pii_entities_scrubbed=pii_count,
                 status="success",
+                audit_metadata={"endpoint": "messages", **decision.audit_metadata()},
             )
 
         raw_response.headers["X-Request-ID"] = request_id
+        raw_response.headers["X-Relay-Deployment"] = decision.deployment or "direct"
+        raw_response.headers["X-Relay-Policy-Version"] = decision.policy_version
         if cache_hit:
             raw_response.headers["X-Cache-Hit"] = "true"
         return openai_response_to_anthropic(response, model)
 
     except ProxyError as exc:
-        await _record_error(exc, model, identity, request_id, start_time, pii_count=0)
+        await _record_error(exc, model, identity, request_id, start_time, pii_count=0, decision=decision)
         from app.core.exceptions import RateLimitError
 
         headers = {"Retry-After": str(exc.retry_after)} if isinstance(exc, RateLimitError) else {}
@@ -259,6 +312,7 @@ async def _stream_anthropic(
     pii_count: int,
     rate_limiter: RateLimiter,
     estimated_tokens: int,
+    decision: RoutingDecision,
     trace_metadata: dict | None = None,
     **kwargs,
 ) -> AsyncGenerator[str, None]:
@@ -447,6 +501,7 @@ async def _stream_anthropic(
                 was_rag_used=rag_used,
                 pii_entities_scrubbed=pii_count,
                 status="success",
+                audit_metadata={"endpoint": "messages", **decision.audit_metadata()},
             )
 
 
@@ -457,6 +512,7 @@ async def _record_error(
     request_id: str,
     start_time: float,
     pii_count: int,
+    decision: RoutingDecision | None = None,
 ) -> None:
     from app.core.exceptions import ContentPolicyError, RateLimitError
 
@@ -482,4 +538,5 @@ async def _record_error(
             pii_entities_scrubbed=pii_count,
             status="error",
             error_code=exc.error_code,
+            audit_metadata={"endpoint": "messages", **(decision.audit_metadata() if decision else {})},
         )

@@ -29,7 +29,7 @@ curl -X POST \
 
 ```bash
 curl -X POST \
-  'http://localhost:8000/internal/api-keys?user_id=<user-uuid>&name=dev-laptop&scopes=chat&scopes=embeddings&scopes=rag%3Arepo%3Amyorg%2Fbackend&expires_at=2026-12-31T23%3A59%3A59Z' \
+  'http://localhost:8000/internal/api-keys?user_id=<user-uuid>&name=dev-laptop&scopes=chat&scopes=responses&scopes=embeddings&scopes=rag%3Arepo%3Amyorg%2Fbackend&expires_at=2026-12-31T23%3A59%3A59Z' \
   -H "Authorization: Bearer $PROXY_MASTER_KEY"
 ```
 
@@ -40,7 +40,7 @@ Response:
   "id": "<key-uuid>",
   "key": "gr-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
   "key_prefix": "gr-xxxxxxxxx",
-  "scopes": ["chat", "embeddings", "rag:repo:myorg/backend"],
+  "scopes": ["chat", "responses", "embeddings", "rag:repo:myorg/backend"],
   "expires_at": "2026-12-31T23:59:59Z"
 }
 ```
@@ -49,7 +49,8 @@ Response:
 The full `key` is returned **once**. It is stored as a SHA-256 hash — it cannot be retrieved again. Save it immediately.
 :::
 
-`chat` is the default when `scopes` is omitted. RAG is fail-closed: add `rag:repo:owner/name` or `rag:*` explicitly.
+`chat` is the default when `scopes` is omitted. Add `responses` for `/v1/responses`. RAG is fail-closed: add
+`rag:repo:owner/name` or `rag:*` explicitly.
 
 ## Option B: Google SSO
 
