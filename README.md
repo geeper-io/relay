@@ -161,6 +161,8 @@ Tests use SQLite in-memory and skip RAG by default. PII tests require a spaCy mo
 
 ## Further reading
 
+- [Responses API with Relay MCP](docs/mcp-responses.md) — delegated credentials, policy-aware tool discovery,
+  approval pause/resume, security properties, and troubleshooting
 - [Configuration reference](docs/configuration.md) — LLM providers, routing policies, PII, RAG, repo sync / code
   review, rate limiting, caching, content policy, OIDC, OpenTelemetry, and Langfuse
 - [Helm reference](docs/helm.md) — production values, scaling, secret management

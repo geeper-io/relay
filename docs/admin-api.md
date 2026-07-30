@@ -2,6 +2,9 @@
 
 All admin endpoints require `Authorization: Bearer <PROXY_MASTER_KEY>`.
 
+For the MCP approval queue and its role in Responses API pause/resume workflows, see
+[Responses API with Relay MCP](mcp-responses.md#decide-the-relay-approval).
+
 ## User and key management
 
 ```bash

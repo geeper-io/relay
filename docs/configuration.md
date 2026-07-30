@@ -362,8 +362,8 @@ mcp:
 
 Keys use granular `mcp:*`, `mcp:server:*`, or `mcp:server:tool` scopes. Approval tokens are short-lived, signed,
 argument-bound, policy-bound, and single-use. Remote arguments are checked against JSON Schema 2020-12; results are
-PII-scrubbed and size-limited. See the website's **MCP gateway and approvals** guide for the full policy and API
-reference.
+PII-scrubbed and size-limited. See [Responses API with Relay MCP](mcp-responses.md) for the complete delegated
+credential, approval, and continuation flow.
 
 ### MCP tools in the Responses API
 
