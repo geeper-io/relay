@@ -17,6 +17,9 @@ Every Relay-key inference request commits a `UsageRecord` and `AuditLog` togethe
 user/team identity, model, status, token counts, RAG use, and the number of scrubbed PII entities. Prompt and response
 content is not copied into this audit row.
 
+Credential lifecycle events are also durable: key creation, revocation, and rotation record the actor, key prefix,
+target user, and replacement relationship without logging raw keys or hashes.
+
 A PostgreSQL materialized view (`usage_daily`) pre-aggregates these by `(day, user_id, team_id, model)` and is refreshed hourly in the background.
 
 ### Query via admin API

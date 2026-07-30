@@ -2,20 +2,24 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import require_admin
 from app.db.engine import get_db
+from app.db.models import ApiKey
 from app.db.repositories.usage import get_leaderboard, get_usage_summary
 from app.db.repositories.users import (
     create_api_key,
     create_team,
     create_user,
     get_user_by_external_id,
+    list_api_keys,
+    revoke_api_key,
+    rotate_api_key,
 )
 
 router = APIRouter(tags=["admin"], dependencies=[Depends(require_admin)])
@@ -124,7 +128,14 @@ async def create_api_key_endpoint(
     expires_at: datetime | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    raw_key, api_key = await create_api_key(db, user_id=user_id, name=name, scopes=scopes, expires_at=expires_at)
+    raw_key, api_key = await create_api_key(
+        db,
+        user_id=user_id,
+        name=name,
+        scopes=scopes,
+        expires_at=expires_at,
+        actor="admin",
+    )
     return {
         "key": raw_key,  # shown once
         "key_prefix": api_key.key_prefix,
@@ -132,3 +143,75 @@ async def create_api_key_endpoint(
         "scopes": api_key.scopes,
         "expires_at": api_key.expires_at,
     }
+
+
+def _key_metadata(api_key: ApiKey) -> dict:
+    expires_at = api_key.expires_at
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if not api_key.is_active:
+        status = "revoked"
+    elif expires_at is not None and expires_at <= datetime.now(timezone.utc):
+        status = "expired"
+    else:
+        status = "active"
+    return {
+        "id": api_key.id,
+        "key_prefix": api_key.key_prefix,
+        "user_id": api_key.user_id,
+        "name": api_key.name,
+        "scopes": api_key.scopes or [],
+        "status": status,
+        "is_active": api_key.is_active,
+        "expires_at": api_key.expires_at,
+        "last_used_at": api_key.last_used_at,
+        "created_at": api_key.created_at,
+    }
+
+
+@router.get("/api-keys")
+async def list_api_keys_endpoint(
+    user_id: str | None = None,
+    include_inactive: bool = False,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    keys = await list_api_keys(
+        db,
+        user_id=user_id,
+        include_inactive=include_inactive,
+        limit=limit,
+        offset=offset,
+    )
+    return {"items": [_key_metadata(key) for key in keys], "limit": limit, "offset": offset}
+
+
+@router.delete("/api-keys/{key_id}")
+async def revoke_api_key_endpoint(
+    key_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    api_key = await revoke_api_key(db, key_id=key_id)
+    if api_key is None:
+        raise HTTPException(status_code=404, detail="API key not found")
+    return _key_metadata(api_key)
+
+
+@router.post("/api-keys/{key_id}/rotate")
+async def rotate_api_key_endpoint(
+    key_id: str,
+    expires_at: datetime | None = None,
+    preserve_expiry: bool = True,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await rotate_api_key(
+        db,
+        key_id=key_id,
+        expires_at=expires_at,
+        preserve_expiry=preserve_expiry,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Active API key not found")
+    raw_key, new_key, old_key = result
+    return {"key": raw_key, **_key_metadata(new_key), "rotated_from": old_key.id}

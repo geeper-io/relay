@@ -18,7 +18,23 @@ curl -X POST "http://localhost:8000/internal/api-keys?user_id=<user-id>&name=lap
   -H "Authorization: Bearer $MASTER_KEY"
 # Returns: { "key": "gr-...", "key_prefix": "gr-XXXXXX", "id": "..." }
 # The raw key is shown once and not stored.
+
+# Inventory key metadata (raw keys and hashes are never returned)
+curl "http://localhost:8000/internal/api-keys?user_id=<user-id>&include_inactive=true" \
+  -H "Authorization: Bearer $MASTER_KEY"
+
+# Revoke a key; repeated calls are safe
+curl -X DELETE "http://localhost:8000/internal/api-keys/<key-id>" \
+  -H "Authorization: Bearer $MASTER_KEY"
+
+# Atomically revoke a key and return a one-time replacement with the same policy
+curl -X POST "http://localhost:8000/internal/api-keys/<key-id>/rotate" \
+  -H "Authorization: Bearer $MASTER_KEY"
 ```
+
+List requests support `user_id`, `include_inactive`, `limit` (1–500), and `offset`. Rotation preserves the previous
+expiry by default; use `preserve_expiry=false&expires_at=<ISO-8601>` to replace it. Creation, revocation, and rotation
+write audit events, and revocation takes effect through the shared database on the next request across all replicas.
 
 ## Usage reports and leaderboards
 

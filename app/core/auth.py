@@ -5,7 +5,6 @@ import hmac
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from cachetools import TTLCache
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,8 +12,6 @@ from app.config import Settings, get_settings
 from app.core.exceptions import AuthenticationError, AuthorizationError
 from app.db.engine import get_db
 from app.db.repositories.users import get_user_by_key_hash, update_key_last_used
-
-_cache: TTLCache = TTLCache(maxsize=1024, ttl=60)
 
 
 @dataclass
@@ -69,13 +66,6 @@ async def resolve_identity(
 
     key_hash = _hash_key(raw_key)
 
-    # Check in-process cache first
-    cached = _cache.get(key_hash)
-    if cached:
-        if cached.expires_at is None or _is_future(cached.expires_at):
-            return cached
-        del _cache[key_hash]
-
     row = await get_user_by_key_hash(db, key_hash)
     if not row:
         raise AuthenticationError("Invalid or expired API key")
@@ -96,8 +86,6 @@ async def resolve_identity(
         team_daily_token_limit=team.daily_token_limit if team else None,
         expires_at=api_key.expires_at,
     )
-    _cache[key_hash] = identity
-
     await update_key_last_used(api_key.id)
 
     return identity

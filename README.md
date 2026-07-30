@@ -27,6 +27,7 @@ Drop-in OpenAI & Anthropic compatible. Deploy to Kubernetes in minutes.
   conventions, patterns, and dependencies
 - **Usage and audit tracking** — authenticated Relay-key requests are durably logged with model, tokens, cost, latency,
   policy metadata, and user identity
+- **Credential lifecycle** — scoped key inventory, immediate revocation, atomic rotation, and lifecycle audit events
 - **Prometheus metrics** — request count, latency, token usage, cost, cache hits, PII events, RAG hits, and rate limit
   events
 - **Rate limiting** — user RPM plus user/team TPM and daily budgets; atomic Redis enforcement across replicas

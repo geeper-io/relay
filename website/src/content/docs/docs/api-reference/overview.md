@@ -26,6 +26,8 @@ Authorization: Bearer gr-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 Keys are issued via the admin API (`POST /internal/api-keys`) or via Google SSO. See [First API key](/docs/getting-started/first-api-key).
+Administrators can inventory, revoke, and atomically rotate keys through the same API; raw secrets are only returned
+at creation or rotation time.
 
 Keys can expire and carry capability/data scopes:
 

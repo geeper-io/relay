@@ -70,7 +70,8 @@ This is **stateless** — no server-side session storage is required. It works c
 
 - Each login creates a **new** key named `sso` — it does not replace the previous one
 - SSO keys receive the default `chat` scope and no RAG repository access
-- Existing keys remain valid until deactivated in the database; key revocation endpoints are not implemented yet
+- Existing keys remain valid until expiry or revocation through `DELETE /internal/api-keys/{key_id}`
+- Administrators can find SSO key IDs with `GET /internal/api-keys?user_id={user_id}`
 - The key is displayed once in the callback HTML page — users should save it immediately
 
 ## Disabling

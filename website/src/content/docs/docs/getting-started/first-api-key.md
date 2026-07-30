@@ -88,8 +88,9 @@ The key is shown once in the callback page — users should copy it to their `.e
 
 ### Subsequent logins
 
-Each login creates a new key. Existing keys remain valid until an administrator deactivates them directly in the
-database or they expire; the current API does not expose key revocation endpoints yet.
+Each login creates a new key. Existing keys remain valid until they expire or an administrator revokes them with
+`DELETE /internal/api-keys/{key_id}`. Use `GET /internal/api-keys?user_id={user_id}` to find the key ID by its name and
+prefix.
 
 :::tip
 To share the proxy with a team, send them to `/auth/login`. They each get their own key tied to their Google identity, billed to their user in the usage reports.

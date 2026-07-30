@@ -137,7 +137,7 @@ async def oauth_callback(
         user = await create_user(db, external_id=external_id)
 
     # Issue a fresh API key on every login
-    raw_key, _api_key = await create_api_key(db, user_id=user.id, name="sso")
+    raw_key, _api_key = await create_api_key(db, user_id=user.id, name="sso", actor="sso")
 
     return HTMLResponse(_key_page(name=name, email=email, raw_key=raw_key, is_new=is_new))
 

@@ -77,13 +77,46 @@ Supported scopes are `chat`, `embeddings`, `rag:repo:owner/name`, `rag:*`, and t
 provided, the key receives `chat` only. The optional `expires_at` is checked both during database lookup and on cached
 identities.
 
-The current API creates keys but does not yet list, revoke, or rotate them. Rotate by issuing a replacement and then
-deactivating the old `api_keys` row (`is_active=false`) through your administrative database workflow.
+### List keys
+
+Key inventory responses contain metadata only. Raw keys and key hashes are never returned.
+
+```bash
+curl 'http://localhost:8000/internal/api-keys?user_id=<user-uuid>&include_inactive=true' \
+  -H "Authorization: Bearer $PROXY_MASTER_KEY"
+```
+
+Use `limit` (1–500) and `offset` for pagination. By default, revoked keys are omitted; expired keys remain visible with
+`status: "expired"` because their database row is still active.
+
+### Revoke a key
+
+```bash
+curl -X DELETE 'http://localhost:8000/internal/api-keys/<key-uuid>' \
+  -H "Authorization: Bearer $PROXY_MASTER_KEY"
+```
+
+Revocation is idempotent and takes effect on the next request across all workers and replicas. Relay-issued identities
+are resolved against the shared database rather than held in a positive in-process cache.
+
+### Rotate a key
+
+```bash
+curl -X POST 'http://localhost:8000/internal/api-keys/<key-uuid>/rotate' \
+  -H "Authorization: Bearer $PROXY_MASTER_KEY"
+```
+
+Rotation atomically revokes the old key and creates a replacement with the same owner, name, scopes, and expiry. The
+new raw `key` is returned once. To set a new expiry instead, pass
+`preserve_expiry=false&expires_at=2027-12-31T23:59:59Z`.
+
+Key creation, revocation, and rotation write audit events without storing raw secrets.
 
 ## Security model
 
 - Keys are stored as SHA-256 hashes — a database compromise does not expose usable keys
 - Expired and inactive keys are rejected; capability and RAG repository scopes are enforced per request
+- Key rotation and revocation are transactional; revoked keys are checked against the shared database on every request
 - The master key (`PROXY_MASTER_KEY`) is the only secret with admin access — rotate it by updating the Kubernetes Secret and restarting pods
 - User and team minute/day budgets are enforced together; any user can consume the shared team quota, so size it for
   aggregate team traffic
