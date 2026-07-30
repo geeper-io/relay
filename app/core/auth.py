@@ -12,6 +12,7 @@ from app.config import Settings, get_settings
 from app.core.exceptions import AuthenticationError, AuthorizationError
 from app.db.engine import get_db
 from app.db.repositories.users import get_user_by_key_hash, update_key_last_used
+from app.mcp.grants import verify_mcp_grant
 
 
 @dataclass
@@ -27,6 +28,10 @@ class ResolvedIdentity:
     team_daily_token_limit: int | None = None
     expires_at: datetime | None = None
     passthrough_key: str | None = None  # set when client provides their own upstream key
+    mcp_grant_approval_id: str | None = None
+    mcp_grant_server: str | None = None
+    mcp_grant_tool: str | None = None
+    mcp_grant_arguments_hash: str | None = None
 
     def has_scope(self, scope: str) -> bool:
         return "*" in self.scopes or scope in self.scopes
@@ -52,6 +57,20 @@ async def resolve_identity(
     settings: Settings = Depends(get_settings),
 ) -> ResolvedIdentity:
     raw_key = _extract_bearer(request)
+
+    if raw_key.startswith("grmcp-"):
+        claims = verify_mcp_grant(raw_key, settings)
+        return ResolvedIdentity(
+            user_id=claims["user_id"],
+            team_id=claims.get("team_id"),
+            key_id=None,
+            scopes=list(claims.get("scopes", [])),
+            expires_at=datetime.fromtimestamp(int(claims["exp"]), tz=timezone.utc),
+            mcp_grant_approval_id=claims.get("approval_id"),
+            mcp_grant_server=claims.get("server"),
+            mcp_grant_tool=claims.get("tool"),
+            mcp_grant_arguments_hash=claims.get("arguments_hash"),
+        )
 
     # Passthrough mode: any key that isn't a Relay-issued key goes straight to the upstream
     if not raw_key.startswith("gr-") and settings.allow_passthrough_keys:

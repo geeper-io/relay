@@ -62,11 +62,14 @@ responses:
 # Relay only brokers Streamable HTTP; external servers own tool execution.
 mcp:
   enabled: false
+  # Public provider-reachable URL for Relay's Streamable HTTP endpoint.
+  public_url: ""
   protocol_version: "2025-11-25"
   servers: {}
   active_policy_version: "default"
   policies: {}
   approval_ttl_seconds: 900
+  delegated_grant_ttl_seconds: 300
   request_timeout_seconds: 60
   max_result_bytes: 1000000
   allow_insecure_http: false

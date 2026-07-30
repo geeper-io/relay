@@ -48,6 +48,11 @@ def test_response_capabilities_cover_typed_features():
     }
 
 
+def test_response_capabilities_include_relay_mcp_without_explicit_tools():
+    request = ResponsesRequest(input="run tests", relay_mcp_servers=["code"])
+    assert response_capabilities(request) == {"responses", "tools", "tool:mcp"}
+
+
 def test_policy_projection_and_last_user_text_preserve_roles():
     request = ResponsesRequest(
         input=[

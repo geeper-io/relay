@@ -10,6 +10,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.analytics.langfuse import build_trace_metadata
 from app.config import Settings, get_settings
@@ -18,8 +19,10 @@ from app.core.content_policy import ContentPolicy, get_content_policy
 from app.core.exceptions import ProxyError, UpstreamError
 from app.core.rate_limiter import RateLimiter, get_rate_limiter
 from app.core.routing import RoutingDecision
+from app.db.engine import get_db
 from app.db.repositories.usage import record_usage
 from app.llm.client import LLMClient, get_llm_client
+from app.mcp.responses import persist_responses_mcp_approvals, prepare_responses_mcp_tools
 from app.metrics import prometheus as m
 from app.pii.restorer import PIIRestorer, get_restorer
 from app.pii.scrubber import PIIScrubber, get_scrubber
@@ -50,6 +53,7 @@ async def responses(
     llm_client: LLMClient = Depends(get_llm_client),
     rate_limiter: RateLimiter = Depends(get_rate_limiter),
     policy: ContentPolicy = Depends(get_content_policy),
+    db: AsyncSession = Depends(get_db),
 ):
     request_id = raw_request.headers.get("x-request-id", str(uuid.uuid4()))
     start_time = time.monotonic()
@@ -134,6 +138,9 @@ async def responses(
             },
         )
         call_kwargs = _responses_kwargs(request_body, settings, identity)
+        relay_tools = await prepare_responses_mcp_tools(request_body, identity, settings, db)
+        if relay_tools is not None:
+            call_kwargs["tools"] = relay_tools
         if scrubbed_instructions is not None:
             call_kwargs["instructions"] = scrubbed_instructions
 
@@ -171,6 +178,14 @@ async def responses(
             **call_kwargs,
         )
         payload = result.model_dump(exclude_none=True) if hasattr(result, "model_dump") else dict(result)
+        await persist_responses_mcp_approvals(
+            payload,
+            request_body,
+            identity,
+            settings,
+            db,
+            request_id,
+        )
         _restore_value(payload.get("output", []), restorer, restoration_map)
         prompt_tokens, completion_tokens = _response_usage(payload.get("usage"))
         await _record_success(

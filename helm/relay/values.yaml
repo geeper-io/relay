@@ -66,11 +66,13 @@ config:
 
   mcp:
     enabled: false
+    publicUrl: ""
     protocolVersion: "2025-11-25"
     servers: {}
     activePolicyVersion: "default"
     policies: {}
     approvalTtlSeconds: 900
+    delegatedGrantTtlSeconds: 300
     requestTimeoutSeconds: 60
     maxResultBytes: 1000000
     allowInsecureHttp: false

@@ -339,7 +339,9 @@ configured remote MCP servers; it does not run local `stdio` processes or execut
 ```yaml
 mcp:
   enabled: true
+  public_url: "https://relay.example.com/mcp"
   protocol_version: "2025-11-25"
+  delegated_grant_ttl_seconds: 300
   active_policy_version: "2026-07-30"
   servers:
     code:
@@ -362,6 +364,63 @@ Keys use granular `mcp:*`, `mcp:server:*`, or `mcp:server:tool` scopes. Approval
 argument-bound, policy-bound, and single-use. Remote arguments are checked against JSON Schema 2020-12; results are
 PII-scrubbed and size-limited. See the website's **MCP gateway and approvals** guide for the full policy and API
 reference.
+
+### MCP tools in the Responses API
+
+Relay can publish selected configured servers to a model as one native remote MCP tool. The model provider receives a
+short-lived `grmcp-...` credential rather than the caller's Relay API key. Before a policy-protected tool runs, the
+Responses API pauses with an `mcp_approval_request`; Relay creates its own durable approval bound to the exact server,
+tool, arguments hash, caller, and policy version.
+This follows OpenAI's [remote MCP tool and approval protocol](https://developers.openai.com/api/docs/guides/tools-connectors-mcp).
+
+```json
+POST /v1/responses
+{
+  "model": "gpt-4o",
+  "input": "Run the unit tests",
+  "store": true,
+  "relay_mcp_servers": ["code"],
+  "relay_mcp_purpose": "Validate the current change"
+}
+```
+
+The approval item includes Relay metadata:
+
+```json
+{
+  "type": "mcp_approval_request",
+  "id": "mcpr_...",
+  "name": "code__execute",
+  "server_label": "relay",
+  "relay_approval": {"id": "<relay-approval-id>", "status": "pending"}
+}
+```
+
+An administrator decides that Relay approval through `POST /internal/mcp/approvals/<relay-approval-id>/decision`. The
+caller then continues using the standard Responses API item:
+
+```json
+POST /v1/responses
+{
+  "model": "gpt-4o",
+  "previous_response_id": "resp_...",
+  "store": true,
+  "input": [{
+    "type": "mcp_approval_response",
+    "approval_request_id": "mcpr_...",
+    "approve": true
+  }]
+}
+```
+
+Relay verifies the durable decision and replaces the discovery credential with a short-lived grant restricted to that
+single approved call. The gateway consumes the approval when the provider invokes the tool, preventing replay or
+argument substitution. `authorization` is regenerated on every Responses request and is never returned to the caller.
+
+This initial integration requires `store: true`, `stream: false`, and foreground mode because continuation state lives
+in the provider's Responses conversation. Relay rejects other combinations explicitly. Set `mcp.public_url` to the
+provider-reachable HTTPS URL of Relay's `/mcp` endpoint; local HTTP is accepted only when `allow_insecure_http` is
+enabled for development.
 
 ## Google SSO portal
 

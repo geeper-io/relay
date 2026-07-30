@@ -41,18 +41,24 @@ class ResponsesRequest(BaseModel):
     truncation: str | None = None
     user: str | None = None
     metadata: dict[str, Any] | None = None
+    # Relay extension: expose selected configured MCP servers as one native
+    # Responses API remote MCP tool backed by Relay's /mcp gateway.
+    relay_mcp_servers: list[str] | None = None
+    relay_mcp_purpose: str | None = Field(default=None, max_length=1000)
 
 
 def response_capabilities(request: ResponsesRequest, *, default_store: bool = False) -> set[str]:
     capabilities = {"responses"}
     if request.stream:
         capabilities.add("streaming")
-    if request.tools:
+    if request.tools or request.relay_mcp_servers:
         capabilities.add("tools")
-        for tool in request.tools:
+        for tool in request.tools or []:
             tool_type = tool.get("type")
             if tool_type and tool_type != "function":
                 capabilities.add(f"tool:{tool_type}")
+    if request.relay_mcp_servers:
+        capabilities.add("tool:mcp")
     if request.reasoning:
         capabilities.add("reasoning")
     if request.text and request.text.get("format", {}).get("type") not in {None, "text"}:

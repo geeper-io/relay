@@ -135,3 +135,22 @@ class MCPApproval(Base):
         Index("ix_mcp_approvals_status_expires", "status", "expires_at"),
         Index("ix_mcp_approvals_user_requested", "user_id", "requested_at"),
     )
+
+
+class MCPResponseApproval(Base):
+    """Links an OpenAI MCP approval item to Relay's durable approval."""
+
+    __tablename__ = "mcp_response_approvals"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    provider_response_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    provider_approval_request_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    approval_id: Mapped[str] = mapped_column(String(36), ForeignKey("mcp_approvals.id"), nullable=False)
+    user_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    team_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_mcp_response_approvals_response", "provider_response_id"),
+        Index("ix_mcp_response_approvals_user", "user_id"),
+    )

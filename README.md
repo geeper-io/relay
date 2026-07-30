@@ -40,7 +40,8 @@ Drop-in OpenAI & Anthropic compatible. Deploy to Kubernetes in minutes.
 - **OIDC SSO** — provider discovery for Entra ID, Okta, Keycloak, Auth0, and other OpenID Connect providers
 - **Evaluation harness** — compare deployment aliases using JSONL cases, deterministic graders, latency, and token reports
 - **MCP gateway** — remote tool discovery, granular scopes, versioned allow/deny/approval policies, argument-bound
-  one-time approvals, JSON Schema validation, output scrubbing, and auditable Streamable HTTP brokering
+  one-time approvals, JSON Schema validation, output scrubbing, auditable Streamable HTTP brokering, and native
+  `/v1/responses` pause/resume flows backed by short-lived delegated credentials
 - **Content policy** — blocks prompt-injection patterns and oversized inputs
 - **Langfuse analytics** — optional per-request LLM tracing with user IDs, session grouping, and cost
 - **Admin API** — manage users, teams, and API keys; pull usage reports

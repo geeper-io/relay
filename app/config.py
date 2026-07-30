@@ -81,6 +81,9 @@ class Settings(BaseSettings):
     mcp__max_result_bytes: int = 1_000_000
     mcp__allow_insecure_http: bool = False
     mcp__allowed_origins: list[str] = []
+    # Public HTTPS URL that model providers use to reach Relay's POST /mcp endpoint.
+    mcp__public_url: str = ""
+    mcp__delegated_grant_ttl_seconds: int = 300
 
     # OpenTelemetry (optional OTLP export)
     telemetry__enabled: bool = False

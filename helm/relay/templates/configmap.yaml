@@ -60,6 +60,7 @@ data:
 
     mcp:
       enabled: {{ .Values.config.mcp.enabled }}
+      public_url: {{ .Values.config.mcp.publicUrl | quote }}
       protocol_version: {{ .Values.config.mcp.protocolVersion | quote }}
       servers:
         {{- toYaml .Values.config.mcp.servers | nindent 8 }}
@@ -67,6 +68,7 @@ data:
       policies:
         {{- toYaml .Values.config.mcp.policies | nindent 8 }}
       approval_ttl_seconds: {{ .Values.config.mcp.approvalTtlSeconds }}
+      delegated_grant_ttl_seconds: {{ .Values.config.mcp.delegatedGrantTtlSeconds }}
       request_timeout_seconds: {{ .Values.config.mcp.requestTimeoutSeconds }}
       max_result_bytes: {{ .Values.config.mcp.maxResultBytes }}
       allow_insecure_http: {{ .Values.config.mcp.allowInsecureHttp }}

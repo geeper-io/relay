@@ -124,8 +124,34 @@ async def invoke_mcp_tool(
         raise AuthorizationError(decision.reason)
 
     approval_id: str | None = None
-    if decision.action == "require_approval":
-        if not body.approval_token:
+    if identity.mcp_grant_approval_id:
+        if (
+            identity.mcp_grant_server != server_name
+            or identity.mcp_grant_tool != tool_name
+            or identity.mcp_grant_arguments_hash != arguments_hash(body.arguments)
+        ):
+            raise AuthorizationError("Delegated MCP credential is not bound to this invocation")
+        delegated_approval = await get_approval(db, identity.mcp_grant_approval_id)
+        if delegated_approval is None:
+            raise AuthorizationError("Delegated MCP approval no longer exists")
+        if delegated_approval.policy_version != decision.policy_version:
+            raise AuthorizationError("MCP policy changed after this tool call was approved")
+        approval = await consume_approval(
+            db,
+            token=issue_approval_token(delegated_approval, settings),
+            settings=settings,
+            user_id=identity.user_id,
+            server=server_name,
+            tool=tool_name,
+            arguments=body.arguments,
+            policy_version=decision.policy_version,
+            request_id=request_id,
+        )
+        approval_id = approval.id
+        metrics.MCP_APPROVALS.labels(status="consumed").inc()
+    elif decision.action == "require_approval":
+        approval_token = body.approval_token
+        if not approval_token:
             approval = await create_approval(
                 db,
                 user_id=identity.user_id,
@@ -148,7 +174,7 @@ async def invoke_mcp_tool(
             )
         approval = await consume_approval(
             db,
-            token=body.approval_token,
+            token=approval_token,
             settings=settings,
             user_id=identity.user_id,
             server=server_name,
