@@ -50,6 +50,37 @@ class User(Base):
     api_keys: Mapped[list[ApiKey]] = relationship("ApiKey", back_populates="user")
 
 
+class AdminRoleAssignment(Base):
+    __tablename__ = "admin_role_assignments"
+
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), primary_key=True)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    assigned_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (Index("ix_admin_role_assignments_role", "role"),)
+
+
+class AdminIdentity(Base):
+    __tablename__ = "admin_identities"
+
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (Index("ix_admin_identities_email", "email"),)
+
+
 class ApiKey(Base):
     __tablename__ = "api_keys"
 
@@ -135,6 +166,103 @@ class MCPApproval(Base):
         Index("ix_mcp_approvals_status_expires", "status", "expires_at"),
         Index("ix_mcp_approvals_user_requested", "user_id", "requested_at"),
     )
+
+
+class MCPApprovalGrantOffer(Base):
+    """Policy-defined standing grant offered when an approval is accepted."""
+
+    __tablename__ = "mcp_approval_grant_offers"
+
+    approval_id: Mapped[str] = mapped_column(String(36), ForeignKey("mcp_approvals.id"), primary_key=True)
+    template: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MCPApprovalGrant(Base):
+    """Durable, scoped authorization for repeated MCP tool calls."""
+
+    __tablename__ = "mcp_approval_grants"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    subject_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    subject_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    server_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    tool_pattern: Mapped[str] = mapped_column(String(255), nullable=False)
+    constraints: Mapped[dict] = mapped_column(JSON, default=dict)
+    policy_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    max_calls: Mapped[int] = mapped_column(Integer, nullable=False)
+    calls_used: Mapped[int] = mapped_column(Integer, default=0)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    source_approval_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("mcp_approvals.id"), nullable=True)
+    workflow_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_mcp_grants_subject_policy_server_expiry",
+            "subject_type",
+            "subject_id",
+            "policy_version",
+            "server_name",
+            "expires_at",
+        ),
+        Index("ix_mcp_grants_source_approval", "source_approval_id"),
+        Index("ix_mcp_grants_workflow", "workflow_id"),
+    )
+
+
+class MCPPolicyVersion(Base):
+    """Immutable database-managed MCP policy document."""
+
+    __tablename__ = "mcp_policy_versions"
+
+    version: Mapped[str] = mapped_column(String(100), primary_key=True)
+    document: Mapped[dict] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    base_version: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    activated_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (Index("ix_mcp_policy_versions_status_created", "status", "created_at"),)
+
+
+class MCPPolicyState(Base):
+    """Singleton pointer to the database-managed active MCP policy."""
+
+    __tablename__ = "mcp_policy_state"
+
+    id: Mapped[str] = mapped_column(String(20), primary_key=True)
+    active_version: Mapped[str] = mapped_column(String(100), ForeignKey("mcp_policy_versions.version"), nullable=False)
+    updated_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class MCPPolicyActivation(Base):
+    """Append-only activation and rollback history."""
+
+    __tablename__ = "mcp_policy_activations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    version: Mapped[str] = mapped_column(String(100), ForeignKey("mcp_policy_versions.version"), nullable=False)
+    previous_version: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    actor: Mapped[str] = mapped_column(String(255), nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (Index("ix_mcp_policy_activations_created", "created_at"),)
 
 
 class MCPResponseApproval(Base):

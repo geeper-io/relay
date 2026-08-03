@@ -16,6 +16,21 @@ data:
       metrics_require_auth: {{ .Values.config.metricsRequireAuth }}
       cors_allowed_origins: {{ toJson .Values.config.corsAllowedOrigins }}
 
+    admin:
+      enabled: {{ .Values.config.admin.enabled }}
+      session_ttl_seconds: {{ .Values.config.admin.sessionTtlSeconds }}
+      secure_cookies: {{ .Values.config.admin.secureCookies }}
+      oidc_enabled: {{ .Values.config.admin.oidcEnabled }}
+      bootstrap_emails: {{ toJson .Values.config.admin.bootstrapEmails }}
+      allow_master_key_login: {{ .Values.config.admin.allowMasterKeyLogin }}
+
+    portal:
+      enabled: {{ .Values.config.portal.enabled }}
+      session_ttl_seconds: {{ .Values.config.portal.sessionTtlSeconds }}
+      secure_cookies: {{ .Values.config.portal.secureCookies }}
+      max_active_keys: {{ .Values.config.portal.maxActiveKeys }}
+      max_key_ttl_days: {{ .Values.config.portal.maxKeyTtlDays }}
+
     llm:
       default_model: {{ .Values.config.llm.defaultModel | quote }}
       allowed_models:
@@ -99,6 +114,14 @@ data:
       context_prefix: "Relevant internal documentation:\n\n"
       context_separator: "\n\n---\n\n"
       require_acl: {{ .Values.config.rag.requireAcl }}
+      hybrid_enabled: {{ .Values.config.rag.hybridEnabled }}
+      candidate_multiplier: {{ .Values.config.rag.candidateMultiplier }}
+      rrf_k: {{ .Values.config.rag.rrfK }}
+      dense_weight: {{ .Values.config.rag.denseWeight }}
+      lexical_weight: {{ .Values.config.rag.lexicalWeight }}
+      reranker_model: {{ .Values.config.rag.rerankerModel | quote }}
+      reranker_top_n: {{ .Values.config.rag.rerankerTopN }}
+      context_max_tokens: {{ .Values.config.rag.contextMaxTokens }}
 
     pii:
       enabled: {{ .Values.config.pii.enabled }}

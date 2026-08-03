@@ -1,0 +1,8 @@
+evaluations:
+  workload: Job
+  mode: retrieval
+  config:
+    k: 5
+    minimum_recall: 1.0
+  cases: |
+    {"id":"auth","query":"Where is authentication implemented?","relevant_ids":["replace-with-chunk-id"]}

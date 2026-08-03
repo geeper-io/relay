@@ -22,12 +22,12 @@ from app.llm.client import LLMClient, get_llm_client
 from app.metrics import prometheus as m
 from app.pii.restorer import PIIRestorer, get_restorer
 from app.pii.scrubber import PIIScrubber, get_scrubber
+from app.rag.context import guard_rag_context
 from app.rag.retriever import RAGRetriever, get_retriever
 from app.schemas.openai import ChatCompletionRequest
 from app.telemetry import annotate_current_span
 
 router = APIRouter(tags=["chat"])
-
 
 def _chat_capabilities(request: ChatCompletionRequest) -> set[str]:
     capabilities = {"chat"}
@@ -55,28 +55,20 @@ def _last_user_message(messages: list[dict]) -> str:
 
 
 def _inject_rag_context(messages: list[dict], context: str) -> list[dict]:
-    """Prepend RAG context to the system message, or insert a new system message."""
+    """Append clearly delimited, untrusted RAG data after application instructions."""
     if not context:
         return messages
+    guarded = guard_rag_context(context)
     if messages and messages[0].get("role") == "system":
         existing = messages[0].get("content", "")
-        new_system = context + "\n\n" + existing if existing else context
+        new_system = existing + "\n\n" + guarded if existing else guarded
         return [{**messages[0], "content": new_system}] + messages[1:]
-    return [{"role": "system", "content": context}] + messages
+    return [{"role": "system", "content": guarded}] + messages
 
 
 def _messages_to_dicts(request: ChatCompletionRequest) -> list[dict]:
-    result = []
-    for msg in request.messages:
-        d: dict = {"role": msg.role}
-        if msg.content is not None:
-            d["content"] = msg.text_content()
-        if msg.tool_calls:
-            d["tool_calls"] = [tc.model_dump() for tc in msg.tool_calls]
-        if msg.tool_call_id:
-            d["tool_call_id"] = msg.tool_call_id
-        result.append(d)
-    return result
+    # Preserve typed content parts (especially images) for the upstream provider.
+    return [message.model_dump(exclude_none=True) for message in request.messages]
 
 
 @router.post("/chat/completions")
@@ -125,11 +117,43 @@ async def chat_completions(
         # 1. Content policy check
         policy.check(request_body.messages)
 
-        # 2. Accurate token count for rate limiting
+        # 2. Convert the complete request without dropping multimodal parts.
         messages_for_counting = _messages_to_dicts(request_body)
-        estimated_tokens = llm_client.count_tokens(model, messages_for_counting)
 
-        # 3. Rate limiting
+        # 3. Messages already converted above for token counting
+        messages = messages_for_counting
+
+        # 4. PII scrubbing
+        scrubbed_messages, restoration_map, pii_count = scrubber.scrub_messages(messages)
+        # 5. RAG context retrieval
+        rag_used = False
+        rag_chunks = 0
+        if settings.rag_enabled:
+            query_text = _last_user_message(scrubbed_messages)
+            rag_repo = raw_request.headers.get("x-relay-repo")
+            rag_filters = rag_filter_for_identity(identity, rag_repo, require_acl=settings.rag_require_acl)
+            context, rag_chunks = await retriever.retrieve_context(query_text, filters=rag_filters)
+            if context and policy.contains_blocked_pattern(context):
+                rag_chunks = 0
+                m.RAG_RETRIEVALS.labels(status="blocked").inc()
+            elif context:
+                context, context_pii_count = scrubber.scrub_untrusted_text(context)
+                pii_count += context_pii_count
+                scrubbed_messages = _inject_rag_context(scrubbed_messages, context)
+                rag_used = True
+                m.RAG_RETRIEVALS.labels(status="hit").inc()
+            else:
+                m.RAG_RETRIEVALS.labels(status="miss").inc()
+        m.RAG_CHUNKS_RETRIEVED.observe(rag_chunks)
+        if pii_count > 0:
+            m.PII_ENTITIES_SCRUBBED.inc(pii_count)
+            m.PII_REQUESTS_AFFECTED.inc()
+
+        # Count the actual enriched prompt so RAG tokens are reserved and limited.
+        estimated_tokens = llm_client.count_tokens(model, scrubbed_messages)
+        policy.check_token_count(estimated_tokens)
+
+        # 6. Rate limiting applies to the complete provider-bound prompt.
         await rate_limiter.check_and_consume(
             identity.user_id,
             identity.team_id,
@@ -140,31 +164,6 @@ async def chat_completions(
             team_tpm_limit=identity.team_tpm_limit,
             team_daily_token_limit=identity.team_daily_token_limit,
         )
-
-        # 4. Messages already converted above for token counting
-        messages = messages_for_counting
-
-        # 5. PII scrubbing
-        scrubbed_messages, restoration_map, pii_count = scrubber.scrub_messages(messages)
-        if pii_count > 0:
-            m.PII_ENTITIES_SCRUBBED.inc(pii_count)
-            m.PII_REQUESTS_AFFECTED.inc()
-
-        # 6. RAG context retrieval
-        rag_used = False
-        rag_chunks = 0
-        if settings.rag_enabled:
-            query_text = _last_user_message(scrubbed_messages)
-            rag_repo = raw_request.headers.get("x-relay-repo")
-            rag_filters = rag_filter_for_identity(identity, rag_repo, require_acl=settings.rag_require_acl)
-            context, rag_chunks = await retriever.retrieve_context(query_text, filters=rag_filters)
-            if context:
-                scrubbed_messages = _inject_rag_context(scrubbed_messages, context)
-                rag_used = True
-                m.RAG_RETRIEVALS.labels(status="hit").inc()
-            else:
-                m.RAG_RETRIEVALS.labels(status="miss").inc()
-        m.RAG_CHUNKS_RETRIEVED.observe(rag_chunks)
 
         # 7. LLM call
         llm_kwargs = {}

@@ -47,6 +47,23 @@ class Settings(BaseSettings):
     server__metrics_require_auth: bool = True
     server__cors_allowed_origins: list[str] = []
 
+    # Opt-in, same-origin admin dashboard with OIDC roles and an optional
+    # master-key break-glass login.
+    admin__enabled: bool = False
+    admin__session_ttl_seconds: int = 28_800
+    admin__secure_cookies: bool = True
+    admin__oidc_enabled: bool = False
+    admin__bootstrap_emails: list[str] = []
+    admin__allow_master_key_login: bool = True
+
+    # OIDC-backed self-service developer portal. Users can inspect only their
+    # own usage and manage keys within the configured OIDC scope ceiling.
+    portal__enabled: bool = True
+    portal__session_ttl_seconds: int = 28_800
+    portal__secure_cookies: bool = True
+    portal__max_active_keys: int = 10
+    portal__max_key_ttl_days: int = 365
+
     # LLM
     llm__default_model: str = "gpt-4o"
     llm__default_embedding_model: str = ""
@@ -113,6 +130,14 @@ class Settings(BaseSettings):
     rag__context_prefix: str = "Relevant internal documentation:\n\n"
     rag__context_separator: str = "\n\n---\n\n"
     rag__require_acl: bool = True
+    rag__hybrid_enabled: bool = True
+    rag__candidate_multiplier: int = 4
+    rag__rrf_k: int = 60
+    rag__dense_weight: float = 1.0
+    rag__lexical_weight: float = 1.0
+    rag__reranker_model: str = ""
+    rag__reranker_top_n: int = 20
+    rag__context_max_tokens: int = 4_000
     chroma_persist_dir: str = "./chroma_data"
     chroma_collection_name: str = "internal_kb"
     chroma_host: str = ""  # if set, use HTTP client (multi-pod); otherwise use local PersistentClient
@@ -129,6 +154,7 @@ class Settings(BaseSettings):
         "CREDIT_CARD",
         "US_SSN",
         "IP_ADDRESS",
+        "INTERNAL_SECRET",
     ]
     pii__allow_list: list[str] = []  # exact strings that should never be scrubbed (e.g. class names)
 
@@ -328,6 +354,38 @@ class Settings(BaseSettings):
     @property
     def rag_require_acl(self) -> bool:
         return self.rag__require_acl
+
+    @property
+    def rag_hybrid_enabled(self) -> bool:
+        return self.rag__hybrid_enabled
+
+    @property
+    def rag_candidate_multiplier(self) -> int:
+        return self.rag__candidate_multiplier
+
+    @property
+    def rag_rrf_k(self) -> int:
+        return self.rag__rrf_k
+
+    @property
+    def rag_dense_weight(self) -> float:
+        return self.rag__dense_weight
+
+    @property
+    def rag_lexical_weight(self) -> float:
+        return self.rag__lexical_weight
+
+    @property
+    def rag_reranker_model(self) -> str:
+        return self.rag__reranker_model
+
+    @property
+    def rag_reranker_top_n(self) -> int:
+        return self.rag__reranker_top_n
+
+    @property
+    def rag_context_max_tokens(self) -> int:
+        return self.rag__context_max_tokens
 
     @property
     def pii_enabled(self) -> bool:

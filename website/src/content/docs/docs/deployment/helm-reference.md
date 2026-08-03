@@ -49,9 +49,21 @@ Non-secret settings mounted as `/app/config/config.yaml`:
 | `config.telemetry.otlpEndpoint` | `""` | OTLP/HTTP traces endpoint |
 | `config.rag.enabled` | `true` | Enable RAG |
 | `config.rag.topK` | `5` | Top-k chunks |
-| `config.rag.scoreThreshold` | `0.4` | Min similarity score |
+| `config.rag.scoreThreshold` | `0.75` | Maximum dense cosine distance |
 | `config.rag.embeddingModel` | `"all-MiniLM-L6-v2"` | Embedding model |
 | `config.rag.requireAcl` | `true` | Restrict retrieval using authenticated repository scopes |
+| `config.rag.hybridEnabled` | `true` | Fuse dense and lexical candidates |
+| `config.rag.candidateMultiplier` | `4` | Candidate pool relative to top-k |
+| `config.rag.rerankerModel` | `""` | Optional pinned/local cross-encoder model |
+| `config.rag.contextMaxTokens` | `4000` | Provider-bound retrieval context budget |
+| `evaluations.enabled` | `null` | Auto-enable when cases or an existing ConfigMap is configured; set `false` to suppress |
+| `evaluations.workload` | `Job` | `Job` for release gates or `CronJob` for scheduled runs |
+| `evaluations.mode` | `retrieval` | `retrieval` or `generation` |
+| `evaluations.jobHook` | `true` | Run Job mode after install/upgrade as a release gate |
+| `evaluations.schedule` | `0 3 * * *` | Cron schedule when workload is `CronJob` |
+| `evaluations.existingConfigMap` | `""` | Existing ConfigMap containing evaluator YAML and JSONL cases |
+| `evaluations.apiKeySecret` | `""` | Dedicated API-key Secret; required for generation mode |
+| `evaluations.waitForRelaySeconds` | `300` | Maximum readiness wait before evaluation |
 | `config.pii.enabled` | `true` | Enable PII scrubbing |
 | `config.pii.scoreThreshold` | `0.7` | Min Presidio confidence |
 | `config.pii.entities` | `[PERSON, EMAIL_ADDRESS, ...]` | Entity types |

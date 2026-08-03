@@ -23,8 +23,13 @@ sequenceDiagram
     Provider->>Gateway: List authorized tools
     Gateway-->>Provider: Policy-filtered tools
     Provider-->>Relay: mcp_approval_request
-    Relay-->>Client: Approval request plus relay_approval.id
-    Admin->>Relay: Approve or deny Relay approval
+    Relay->>Relay: Match bounded standing grant
+    alt no matching grant
+        Relay-->>Client: Approval request plus relay_approval.id
+        Admin->>Relay: Approve once or approve with grant
+    else matching grant
+        Relay-->>Client: Already-approved relay_approval
+    end
     Client->>Relay: mcp_approval_response
     Relay->>Provider: Exact-call delegated grant
     Provider->>Gateway: Call approved tool
@@ -79,6 +84,13 @@ mcp:
               runtime: [python, node]
             denied_patterns:
               command: ["rm\\s+-rf", "sudo"]
+          grant:
+            subject: user
+            ttl_seconds: 28800
+            max_calls: 20
+            constraints:
+              allowed_values:
+                runtime: [python]
 ```
 
 MCP server credentials remain server-side. `headers_env` values are resolved by Relay when it calls the enterprise MCP
@@ -133,6 +145,10 @@ Persist both `resp_123` and `mcpr_123`; the continuation must contain the matchi
 
 Approval administration uses `PROXY_MASTER_KEY`, not a user Relay key.
 
+For interactive review, enable the [admin dashboard](admin-dashboard.md) and open `/admin`. It shows the exact tool,
+arguments, requester, purpose, policy version, and expiry with approve-once and deny actions. The API flow below remains
+available for automation and break-glass operations.
+
 List pending approvals:
 
 ```bash
@@ -152,6 +168,27 @@ curl -X POST \
 
 To reject it, send `{"decision":"denied","reason":"..."}`. A caller can also decline the proposed call by sending
 an MCP approval response with `approve: false`; Relay records that pending approval as denied.
+
+### Avoiding an approval pause on every call
+
+Relay supports durable standing grants for reviewed, repeated workflows. A grant is bounded by user or team, exact MCP
+server, glob-style tool pattern, active policy version, expiry, maximum call count, and optional argument constraints.
+It never bypasses the caller's current MCP scopes or an active policy denial.
+
+There are two ways to create one:
+
+- Add `grant` to a `require_approval` policy rule, as in the configuration above. The first manual approval displays
+  the proposed scope and creates the grant atomically with the approval decision.
+- Have an admin create a grant in the dashboard or through `POST /internal/mcp/grants`; see the
+  [admin API](admin-api.md#mcp-approval-grants).
+
+An unconstrained matching grant makes the tool automatic during discovery, so the provider does not pause. A
+constrained grant remains approval-marked until exact arguments are known; Relay then consumes the matching grant and
+marks its approval record approved without an administrator. The client still sends the standard Responses
+`mcp_approval_response` continuation, but it can do so immediately.
+
+Relay reserves one grant call before contacting the enterprise tool. Failed remote calls therefore consume budget.
+Admins can revoke a grant immediately, and a new active policy version prevents old grants from matching.
 
 ## Continue the response
 
@@ -187,6 +224,8 @@ Relay currently accepts one MCP approval response per continuation.
 - Relay re-evaluates current scopes and the active policy when the continuation and tool call arrive.
 - A policy-version change invalidates an approval created under the previous version.
 - The durable approval is consumed before the enterprise tool is called, preventing replay.
+- Standing grants are subject-, server-, tool-pattern-, policy-, expiry-, constraint-, and call-budget-bound; creation,
+  consumption, exhaustion, and revocation are auditable.
 - Tool arguments are validated against the remote JSON Schema and Relay policy constraints.
 - Tool results are size-limited and PII-scrubbed before returning to the model provider.
 - Approval requests, decisions, consumption, tool calls, failures, and argument hashes are written to the audit log.
@@ -212,9 +251,8 @@ Relay should supply gateway authorization, policy filtering, and durable enterpr
 |---|---|---|
 | `mcp.public_url must be an HTTPS URL` | Public URL is empty or HTTP | Configure the externally reachable HTTPS `/mcp` URL; use insecure HTTP only for development |
 | `No MCP tools are authorized` | Key scopes or policy deny every selected tool | Add the narrow required MCP scope and an allow/approval policy rule |
-| `approval_required` | Relay approval remains pending | Have an administrator decide it, then retry the continuation |
+| `approval_required` | No matching standing grant and the Relay approval remains pending | Have an administrator decide it, then retry; or provision a narrowly bounded grant for a repeated workflow |
 | Approval does not belong to identity | Wrong caller, response ID, or approval request ID | Continue with the same Relay identity and matching IDs from the paused response |
 | Policy changed after approval | Active MCP policy version changed | Start a new response and obtain a new approval under the active policy |
 | Delegated credential expired | Provider call exceeded the configured TTL | Retry the Responses request or cautiously increase the grant TTL |
 | Provider cannot list tools | Relay `/mcp` is not reachable from the provider | Check public DNS, TLS, ingress routing, and that the URL terminates at `POST /mcp` |
-

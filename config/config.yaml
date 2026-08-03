@@ -8,6 +8,23 @@ server:
   metrics_require_auth: true
   cors_allowed_origins: []
 
+# Browser admin is opt-in. Keep secure cookies enabled outside local development.
+admin:
+  enabled: false
+  session_ttl_seconds: 28800
+  secure_cookies: true
+  oidc_enabled: false
+  bootstrap_emails: []
+  allow_master_key_login: true
+
+# Self-service user portal. Key scopes are capped by oidc.default_key_scopes.
+portal:
+  enabled: true
+  session_ttl_seconds: 28800
+  secure_cookies: true
+  max_active_keys: 10
+  max_key_ttl_days: 365
+
 llm:
   default_model: "gpt-4o"
   allowed_models:
@@ -98,6 +115,13 @@ mcp:
   #             runtime: [python, node]
   #           denied_patterns:
   #             command: ["rm\\s+-rf", "sudo"]
+  #         grant:
+  #           subject: user
+  #           ttl_seconds: 28800
+  #           max_calls: 20
+  #           constraints:
+  #             allowed_values:
+  #               runtime: [python]
 
 telemetry:
   enabled: false
@@ -122,11 +146,20 @@ oidc:
 rag:
   enabled: true
   top_k: 5
-  score_threshold: 0.4
+  score_threshold: 0.75
   embedding_model: "all-MiniLM-L6-v2"
   context_prefix: "Relevant internal documentation:\n\n"
   context_separator: "\n\n---\n\n"
   require_acl: true
+  hybrid_enabled: true
+  candidate_multiplier: 4
+  rrf_k: 60
+  dense_weight: 1.0
+  lexical_weight: 1.0
+  # Empty disables cross-encoder reranking. Pin a local path or model revision in production.
+  reranker_model: ""
+  reranker_top_n: 20
+  context_max_tokens: 4000
 
 pii:
   enabled: true
@@ -141,6 +174,7 @@ pii:
     - LOCATION
     - NRP
     - MEDICAL_LICENSE
+    - INTERNAL_SECRET
 
 rate_limiting:
   enabled: true

@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from starlette.requests import Request
@@ -7,6 +9,7 @@ from app.config import Settings
 from app.core.auth import ResolvedIdentity
 from app.core.exceptions import ApprovalRequiredError, ContentPolicyError
 from app.db.engine import Base
+from app.mcp.approval_grants import create_approval_grant
 from app.mcp.approvals import arguments_hash, create_approval, decide_approval
 from app.mcp.grants import verify_mcp_grant
 from app.mcp.responses import persist_responses_mcp_approvals, prepare_responses_mcp_tools
@@ -47,7 +50,7 @@ def _identity() -> ResolvedIdentity:
 
 @pytest.mark.asyncio
 async def test_initial_response_injects_native_relay_mcp_tool(monkeypatch, db_factory):
-    async def fake_list_tools(server, identity, settings):
+    async def fake_list_tools(server, identity, settings, db):
         return {
             "items": [
                 {
@@ -184,3 +187,137 @@ async def test_exact_delegated_grant_consumes_approval_at_tool_call(monkeypatch,
         await db.refresh(approval)
     assert result["approval_id"] == approval.id
     assert approval.status == "consumed"
+
+
+@pytest.mark.asyncio
+async def test_standing_grant_executes_direct_tool_call_without_manual_pause(monkeypatch, db_factory):
+    class FakeClient:
+        def __init__(self, settings):
+            pass
+
+        async def call_tool(self, server, tool, arguments):
+            return {"content": [{"type": "text", "text": "ok"}], "isError": False}
+
+    class FakeScrubber:
+        def scrub_text_values(self, values):
+            return values, {}, 0
+
+    monkeypatch.setattr("app.api.v1.mcp.MCPStreamableHTTPClient", FakeClient)
+    async with db_factory() as db:
+        grant = await create_approval_grant(
+            db,
+            subject_type="user",
+            subject_id="user-1",
+            server="code",
+            tool_pattern="execute*",
+            constraints={"allowed_values": {"runtime": ["python"]}},
+            policy_version="default",
+            max_calls=2,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            actor="admin",
+            reason="Test workflow",
+            request_id="grant-create",
+        )
+        result = await invoke_mcp_tool(
+            "code",
+            "execute",
+            MCPInvokeRequest(arguments={"runtime": "python", "command": "pytest"}),
+            Request({"type": "http", "headers": []}),
+            _identity(),
+            _settings(),
+            FakeScrubber(),
+            db,
+        )
+        await db.refresh(grant)
+    assert result["grant_id"] == grant.id
+    assert result["approval_id"] is None
+    assert grant.calls_used == 1
+
+
+@pytest.mark.asyncio
+async def test_constrained_grant_auto_approves_responses_call_after_arguments_are_known(db_factory):
+    settings = _settings()
+    identity = _identity()
+    request = ResponsesRequest(input="run tests", store=True, relay_mcp_servers=["code"])
+    payload = {
+        "id": "resp-granted",
+        "output": [
+            {
+                "id": "mcpr-granted",
+                "type": "mcp_approval_request",
+                "server_label": "relay",
+                "name": "code__execute",
+                "arguments": '{"runtime":"python","command":"pytest"}',
+            }
+        ],
+    }
+    async with db_factory() as db:
+        grant = await create_approval_grant(
+            db,
+            subject_type="team",
+            subject_id="team-1",
+            server="code",
+            tool_pattern="execute",
+            constraints={"allowed_values": {"runtime": ["python"]}},
+            policy_version="default",
+            max_calls=4,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            actor="admin",
+            reason="CI workflow",
+            request_id="grant-create",
+        )
+        await persist_responses_mcp_approvals(payload, request, identity, settings, db, "request-granted")
+        assert payload["output"][0]["relay_approval"] == {
+            "id": payload["output"][0]["relay_approval"]["id"],
+            "status": "approved",
+            "grant_id": grant.id,
+        }
+        continuation = ResponsesRequest(
+            input=[
+                {
+                    "type": "mcp_approval_response",
+                    "approval_request_id": "mcpr-granted",
+                    "approve": True,
+                }
+            ],
+            previous_response_id="resp-granted",
+            store=True,
+        )
+        tools = await prepare_responses_mcp_tools(continuation, identity, settings, db)
+        await db.refresh(grant)
+    assert tools[-1]["require_approval"] == "never"
+    assert grant.calls_used == 1
+
+
+@pytest.mark.asyncio
+async def test_unconstrained_grant_is_advertised_as_automatic_responses_tool(monkeypatch, db_factory):
+    class FakeClient:
+        def __init__(self, settings):
+            pass
+
+        async def list_tools(self, server):
+            return [{"name": "execute", "inputSchema": {"type": "object"}}]
+
+    monkeypatch.setattr("app.api.v1.mcp.MCPStreamableHTTPClient", FakeClient)
+    async with db_factory() as db:
+        await create_approval_grant(
+            db,
+            subject_type="user",
+            subject_id="user-1",
+            server="code",
+            tool_pattern="execute",
+            constraints={},
+            policy_version="default",
+            max_calls=2,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            actor="admin",
+            reason="Routine execution",
+            request_id="grant-create",
+        )
+        tools = await prepare_responses_mcp_tools(
+            ResponsesRequest(input="run tests", store=True, relay_mcp_servers=["code"]),
+            _identity(),
+            _settings(),
+            db,
+        )
+    assert tools[-1]["require_approval"] == "never"

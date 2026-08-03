@@ -22,13 +22,23 @@ class MCPPolicyDecision:
     reason: str
     rule_name: str | None = None
     constraints: dict[str, Any] | None = None
+    grant: dict[str, Any] | None = None
 
 
 class MCPPolicyEngine:
     """Evaluate first-match rules from an immutable configured policy version."""
 
-    def __init__(self, settings: Settings):
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        policy_version: str | None = None,
+        policy_document: dict[str, Any] | None = None,
+    ):
         self._settings = settings
+        self._explicit_policy = policy_version is not None or policy_document is not None
+        self._policy_version = policy_version or settings.mcp_active_policy_version
+        self._policy_document = dict(policy_document or {})
 
     def authorize(
         self,
@@ -44,11 +54,14 @@ class MCPPolicyEngine:
         if not has_tool_scope(identity, server, tool):
             return self._decision("deny", "API key is not scoped for this MCP tool")
 
-        version = self._settings.mcp_active_policy_version
-        policies = self._settings.mcp_policies
-        if policies and version not in policies:
-            return self._decision("deny", f"MCP policy version '{version}' is not configured")
-        policy = policies.get(version, {})
+        version = self._policy_version
+        if self._explicit_policy:
+            policy = self._policy_document
+        else:
+            policies = self._settings.mcp_policies
+            if policies and version not in policies:
+                return self._decision("deny", f"MCP policy version '{version}' is not configured")
+            policy = policies.get(version, {})
         for index, rule in enumerate(policy.get("rules", [])):
             if not _matches(rule, identity, server, tool):
                 continue
@@ -60,6 +73,7 @@ class MCPPolicyEngine:
             if missing:
                 return self._decision("deny", "Missing policy scopes: " + ", ".join(missing))
             constraints = dict(rule.get("constraints", {}))
+            grant = dict(rule.get("grant", {})) or None
             if arguments is not None:
                 try:
                     validate_argument_constraints(arguments, constraints)
@@ -70,6 +84,7 @@ class MCPPolicyEngine:
                 str(rule.get("reason") or f"Matched MCP policy rule {index}"),
                 str(rule.get("name") or f"rule-{index}"),
                 constraints,
+                grant,
             )
 
         default_action = str(policy.get("default_action", "deny"))
@@ -83,13 +98,15 @@ class MCPPolicyEngine:
         reason: str,
         rule_name: str | None = None,
         constraints: dict[str, Any] | None = None,
+        grant: dict[str, Any] | None = None,
     ) -> MCPPolicyDecision:
         return MCPPolicyDecision(
             action=action,  # type: ignore[arg-type]
-            policy_version=self._settings.mcp_active_policy_version,
+            policy_version=self._policy_version,
             reason=reason,
             rule_name=rule_name,
             constraints=constraints,
+            grant=grant,
         )
 
 

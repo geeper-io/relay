@@ -12,6 +12,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.pii.scrubber import PIIScrubber
+from app.rag.context import guard_rag_context
 from app.schemas.openai import ChatMessage
 
 
@@ -137,12 +138,13 @@ def scrub_response_payload(
 
 
 def inject_response_context(input_: str | list[dict[str, Any]], context: str) -> list[dict[str, Any]]:
+    guarded = guard_rag_context(context)
     if isinstance(input_, str):
         return [
-            {"role": "system", "content": context},
+            {"role": "system", "content": guarded},
             {"role": "user", "content": input_},
         ]
-    return [{"role": "system", "content": context}, *input_]
+    return [{"role": "system", "content": guarded}, *input_]
 
 
 def _contains_input_type(value: Any, expected: str) -> bool:
@@ -157,7 +159,7 @@ def _text_values(value: Any) -> list[str]:
     found: list[str] = []
     if isinstance(value, dict):
         for key, item in value.items():
-            if key in {"text", "output"} and isinstance(item, str):
+            if key in {"text", "output", "arguments"} and isinstance(item, str):
                 found.append(item)
             elif key == "content" and isinstance(item, str):
                 found.append(item)
@@ -172,7 +174,7 @@ def _text_values(value: Any) -> list[str]:
 def _collect_scrubbable_fields(value: Any, paths: list[tuple[dict, str]], values: list[str]) -> None:
     if isinstance(value, dict):
         for key, item in value.items():
-            if key in {"text", "output"} and isinstance(item, str):
+            if key in {"text", "output", "arguments"} and isinstance(item, str):
                 paths.append((value, key))
                 values.append(item)
             elif key == "content" and isinstance(item, str):

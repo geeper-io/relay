@@ -1,0 +1,50 @@
+{{- if and (eq (include "relay.evaluationsEnabled" .) "true") (not .Values.evaluations.existingConfigMap) }}
+{{- $mode := .Values.evaluations.mode -}}
+{{- if not (has $mode (list "retrieval" "generation")) -}}
+{{- fail "evaluations.mode must be retrieval or generation" -}}
+{{- end -}}
+{{- if not .Values.evaluations.cases -}}
+{{- fail "evaluations.cases is required when evaluations.existingConfigMap is empty" -}}
+{{- end -}}
+{{- $baseURL := .Values.evaluations.baseUrl | default (printf "http://%s:%v" (include "relay.fullname" .) .Values.service.port) -}}
+{{- $apiKeyEnv := .Values.evaluations.apiKeyEnv -}}
+{{- if not $apiKeyEnv -}}
+{{- $apiKeyEnv = ternary "PROXY_MASTER_KEY" "RELAY_API_KEY" (eq $mode "retrieval") -}}
+{{- end -}}
+{{- $config := dict
+      "mode" $mode
+      "base_url" $baseURL
+      "api_key_env" $apiKeyEnv
+      "dataset" .Values.evaluations.datasetKey
+      "output" .Values.evaluations.reportPath
+      "timeout_seconds" 120
+-}}
+{{- if eq $mode "retrieval" -}}
+{{- $_ := set $config "k" 5 -}}
+{{- $_ := set $config "minimum_recall" 1.0 -}}
+{{- else -}}
+{{- $_ := set $config "endpoint" "responses" -}}
+{{- $_ := set $config "deployments" (list) -}}
+{{- $_ := set $config "concurrency" 4 -}}
+{{- end -}}
+{{- $config = mergeOverwrite $config (deepCopy .Values.evaluations.config) -}}
+{{- $_ := set $config "mode" $mode -}}
+{{- $_ := set $config "base_url" $baseURL -}}
+{{- $_ := set $config "api_key_env" $apiKeyEnv -}}
+{{- $_ := set $config "dataset" .Values.evaluations.datasetKey -}}
+{{- $_ := set $config "output" .Values.evaluations.reportPath -}}
+{{- if and (eq $mode "generation") (empty (get $config "deployments")) -}}
+{{- fail "evaluations.config.deployments must contain at least one deployment in generation mode" -}}
+{{- end -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "relay.fullname" . }}-evaluations
+  labels:
+    {{- include "relay.labels" . | nindent 4 }}
+data:
+  {{ .Values.evaluations.configKey }}: |
+    {{- toYaml $config | nindent 4 }}
+  {{ .Values.evaluations.datasetKey }}: |
+    {{- .Values.evaluations.cases | nindent 4 }}
+{{- end }}

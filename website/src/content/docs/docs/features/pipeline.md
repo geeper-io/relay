@@ -104,8 +104,9 @@ See [Rate limiting](/docs/features/rate-limiting) for bucket mechanics and Redis
 ### 05 — PII Scrubbing
 
 - Runs Presidio `AnalyzerEngine` across all message content
-- Detected entities are replaced with deterministic placeholders: `<<PII_EMAIL_ADDRESS_a3f8c1d0>>`
+- Detected entities are replaced with request-local 128-bit placeholders: `<<PII_EMAIL_ADDRESS_8e841b7a…>>`
 - The placeholder→original mapping is stored in request context for stage 09
+- System instructions, diffs, typed text blocks, and tool/function arguments share the same boundary
 - Disabled by setting `pii.enabled: false`
 
 See [PII scrubbing](/docs/features/pii-scrubbing).
@@ -115,7 +116,9 @@ See [PII scrubbing](/docs/features/pii-scrubbing).
 - Embeds the last user message with `all-MiniLM-L6-v2`
 - Derives repository filters from `rag:repo:*` or `rag:*` scopes on the authenticated key
 - Queries ChromaDB only within those authorized repositories
-- Injects retrieved chunks as a prefix in the system message
+- Irreversibly redacts PII found in retrieved chunks
+- Appends source-labelled chunks after application instructions inside an untrusted-reference delimiter
+- Recounts the enriched prompt before enforcing the input ceiling and reserving rate-limit tokens
 - No-op if ChromaDB is empty or if `rag.enabled: false`
 
 See [RAG integration](/docs/features/rag).

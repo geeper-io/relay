@@ -40,6 +40,31 @@ AZURE_OPENAI_API_KEY=...
 AZURE_OPENAI_ENDPOINT=https://your-deployment.openai.azure.com
 ```
 
+## Database migrations
+
+Relay uses Alembic migrations for its relational schema. Startup runs the compatibility migration wrapper before
+initializing any services:
+
+```bash
+python -m app.db.migrate upgrade
+```
+
+The command reads `DATABASE_URL`, upgrades fresh or already-versioned databases to the current head, and safely adopts
+unversioned databases created by older Relay versions. Legacy adoption checks for complete historical schema stages;
+it refuses to stamp a partial or unrelated database. Existing rows are preserved.
+
+Concurrent Relay processes serialize upgrades with a PostgreSQL advisory lock or a SQLite lock file. For controlled
+production rollouts, run the command once as a deployment migration step before starting the new application version;
+the startup invocation then becomes a verified no-op. Inspect status with:
+
+```bash
+python -m app.db.migrate current
+```
+
+Direct `alembic upgrade head`, `alembic current`, and `alembic check` are available for fresh or already-versioned
+databases. Use the Relay wrapper for the first migration of an older unversioned installation. Back up production data
+before downgrading; downgrade operations can remove tables and data.
+
 ## Security defaults and API-key scopes
 
 Relay starts with provider-key passthrough disabled and API documentation disabled. `/metrics` requires the master key,
@@ -86,6 +111,7 @@ pii:
     - LOCATION
     - NRP
     - MEDICAL_LICENSE
+    - INTERNAL_SECRET      # high-confidence provider/GitHub/Bearer token patterns; never restored
   allow_list:            # exact strings that are never scrubbed (case-insensitive)
     - Settings           # e.g. class names that Presidio mis-detects as person names
     - Config
@@ -93,14 +119,22 @@ pii:
 ```
 
 Custom regex patterns (employee IDs, internal project codes, etc.) are defined in `app/pii/regex_patterns.py`. Add a
-`PatternRecognizer` entry there — no config change needed.
+`PatternRecognizer` entry there and include its entity name in `pii.entities` to activate it.
 
-PII is replaced with typed placeholders (`<<PII_EMAIL_ADDRESS_a3f2b1>>`) before the request reaches the LLM.
+PII is replaced with request-local, typed placeholders
+(`<<PII_EMAIL_ADDRESS_8e841b7a95114eb4af19496c6f20a86c>>`) before the request reaches the LLM.
 Placeholders are swapped back in the response. The same original value always maps to the same placeholder within a
 request, so the LLM can still reason about relationships between entities.
 
-Git diffs (`diff --git …` or unified hunk headers `@@ -N,N +N,N @@`) are passed through without scrubbing — variable
-names, class names, and identifiers in code produce too many false positives.
+System/developer instructions, ordinary message text, tool-call arguments, Responses API function arguments, code
+blocks, and git diffs are all scrubbed. Use `allow_list` for known product or class names that the NER model
+misclassifies; Relay does not bypass the provider boundary based on content format.
+
+Retrieved knowledge-base text follows a stricter rule: detected PII is replaced with irreversible
+`<<REDACTED_ENTITY>>` markers, so internal-document values are never added to the caller's restoration map.
+`INTERNAL_SECRET` matches are also irreversible for caller-originated content and are never restored into output.
+Retrieved context matching an active `content_policy.blocked_patterns` expression is dropped rather than sent to the
+provider or used to reject the caller's otherwise-valid request.
 
 ## RAG / knowledge base
 
@@ -112,6 +146,14 @@ rag:
                                     # 0.75 is tuned for all-MiniLM-L6-v2 on mixed code + doc corpora
   embedding_model: "all-MiniLM-L6-v2"   # runs locally, no API key needed
   require_acl: true                       # derive repository filters from API-key scopes
+  hybrid_enabled: true                    # dense + BM25-style lexical candidates
+  candidate_multiplier: 4                # candidate pool relative to top_k
+  rrf_k: 60                               # reciprocal-rank-fusion smoothing constant
+  dense_weight: 1.0
+  lexical_weight: 1.0
+  reranker_model: ""                     # optional local/pinned CrossEncoder model
+  reranker_top_n: 20
+  context_max_tokens: 4000                # hard budget for formatted source chunks
 ```
 
 Supported file formats: `.txt`, `.md`, `.rst` (word-based chunking) and `.py`, `.js`, `.ts`, `.go`, `.rb`, `.java`,
@@ -143,7 +185,7 @@ curl http://localhost:8000/v1/chat/completions \
 **Debugging retrieval:**
 
 ```bash
-# Raw vector search — shows distances and whether each chunk passes the threshold
+# Production hybrid search — shows dense, lexical, fused, and optional reranker scores
 curl "http://localhost:8000/internal/kb/search?q=authentication+middleware&repo=myorg/backend" \
   -H "Authorization: Bearer $MASTER_KEY"
 ```
@@ -240,10 +282,11 @@ git diff | jq -Rs '{
 
 **How the pipeline handles a code review request:**
 
-1. **PII scrubbing** — messages containing `diff --git` or a unified hunk header (`@@ -N,N +N,N @@`) skip scrubbing
-   entirely; identifiers and class names in diffs produce too many false positives.
+1. **PII scrubbing** — the diff is scanned like every other provider-bound text field; known false positives should
+   be handled with `pii.allow_list`.
 2. **RAG** — the diff is the retrieval query. API-key scopes authorize repositories; `X-Relay-Repo` can narrow that
-   authorized set but cannot expand it. The top-K matching functions, classes, and docs are prepended as context.
+   authorized set but cannot expand it. The top-K matching functions, classes, and docs are appended after application
+   instructions inside an explicit untrusted-reference boundary. Retrieved PII is irreversibly redacted.
 3. **LLM call** — the model receives the diff plus the retrieved context and returns a review grounded in your actual
    codebase rather than generic advice.
 
@@ -358,12 +401,31 @@ mcp:
         - server: code
           tool: execute
           action: require_approval
+          grant:
+            subject: user
+            ttl_seconds: 28800
+            max_calls: 20
+            constraints:
+              allowed_values:
+                runtime: [python]
 ```
 
 Keys use granular `mcp:*`, `mcp:server:*`, or `mcp:server:tool` scopes. Approval tokens are short-lived, signed,
 argument-bound, policy-bound, and single-use. Remote arguments are checked against JSON Schema 2020-12; results are
 PII-scrubbed and size-limited. See [Responses API with Relay MCP](mcp-responses.md) for the complete delegated
 credential, approval, and continuation flow.
+
+`require_approval` rules can offer a bounded standing `grant` after the first human approval. `subject` is `user` or
+`team`; a team offer falls back to the requesting user when no team is present. `ttl_seconds` is limited to 60 seconds
+through 30 days and `max_calls` to 1 through 10,000. Optional `tool_pattern`, `constraints`, `workflow_id`, and `reason`
+further describe or narrow the grant. Grants match only the active policy version and never override scopes, policy
+denials, or the rule's argument constraints.
+
+Configured policy versions bootstrap the MCP control plane. Once an admin activates a database-backed draft, the
+database active pointer takes precedence over `active_policy_version` so every replica observes the same policy without
+a configuration rollout. Drafts are immutable and validated before activation; rollback reactivates an earlier
+version. Keep the configured active version available as a recovery baseline. Approvals and standing grants never
+cross policy-version boundaries.
 
 ### MCP tools in the Responses API
 
@@ -422,17 +484,52 @@ in the provider's Responses conversation. Relay rejects other combinations expli
 provider-reachable HTTPS URL of Relay's `/mcp` endpoint; local HTTP is accepted only when `allow_insecure_http` is
 enabled for development.
 
-## Google SSO portal
+## Admin dashboard
 
-Employees can self-serve an API key by logging in with their Google account — no admin intervention required.
+The optional dashboard at `/admin` provides a focused MCP approval inbox. It is disabled by default.
+
+```yaml
+admin:
+  enabled: true
+  session_ttl_seconds: 28800
+  secure_cookies: true
+  oidc_enabled: true
+  bootstrap_emails: [relay-admin@example.com]
+  allow_master_key_login: true
+```
+
+OIDC-backed sessions support durable `viewer`, `approver`, and `admin` roles. `bootstrap_emails` provides initial admin
+access; role assignments are then managed through `/internal/admin-roles`. The optional master-key login remains a
+break-glass path and can be disabled independently. Keep secure cookies enabled with HTTPS in production. See
+[Admin dashboard](admin-dashboard.md) for the security model and operating guidance.
+
+## Self-service developer portal
+
+Employees sign in with general OIDC or the Google compatibility configuration and land at `/portal`. The portal shows
+their effective user/team limits, recent requests, tokens, cost and model usage, and safe API-key metadata. Users can
+create, rotate, and revoke only their own keys and copy setup instructions for OpenAI-compatible clients, Anthropic,
+Claude Code, remote MCP, and Responses API tool workflows.
 
 ```
-GET /auth/login      → redirect to Google consent screen
-GET /auth/callback   → exchange code, create user, issue key, show HTML page
+GET /auth/login      → redirect to the identity provider
+GET /auth/callback   → exchange code, create user session, redirect to /portal
 ```
 
-The callback page displays the generated `gr-...` key once with a copy button and the two shell commands needed to
-configure Claude Code.
+The callback no longer creates a key on every login. Users create purpose-specific keys in the portal; raw secrets are
+shown once. The legacy one-shot page remains temporarily available through `/auth/login?issue_key=true`.
+
+```yaml
+portal:
+  enabled: true
+  session_ttl_seconds: 28800
+  secure_cookies: true
+  max_active_keys: 10
+  max_key_ttl_days: 365
+```
+
+Self-service key scopes must be a subset of `oidc.default_key_scopes`; users cannot grant themselves broader access.
+The active-key count and maximum TTL are enforced server-side. Sessions are signed, HttpOnly, SameSite Strict, and all
+key mutations require a session-bound CSRF token. Keep secure cookies enabled outside local HTTP development.
 
 **Setup:**
 
@@ -457,8 +554,7 @@ auth_base_url: "https://your-proxy.internal"
 If `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are not set both routes return `501 Not Implemented`. The portal can be
 disabled entirely by simply not providing those credentials.
 
-Each login issues a **fresh** API key (`name: sso`). Old keys remain valid until revoked via the admin API, so
-accidental re-logins do not break running sessions.
+Set `portal.enabled: false` to disable the user surface while retaining the explicit legacy key flow.
 
 ## Langfuse analytics
 

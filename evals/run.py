@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 import os
 import re
 import statistics
@@ -37,12 +38,33 @@ class EvalResult:
     error: str | None = None
 
 
+@dataclass
+class RetrievalEvalResult:
+    case_id: str
+    passed: bool
+    recall_at_k: float
+    reciprocal_rank: float
+    ndcg_at_k: float
+    ranked_ids: list[str]
+    relevant_ids: list[str]
+    latency_ms: int
+    error: str | None = None
+
+
 def grade_output(output: str, expected: dict[str, Any]) -> tuple[bool, float]:
     checks: list[bool] = []
     if "equals" in expected:
         checks.append(output.strip() == str(expected["equals"]).strip())
     if "contains" in expected:
         values = expected["contains"]
+        values = [values] if isinstance(values, str) else values
+        checks.extend(str(value).lower() in output.lower() for value in values)
+    if "not_contains" in expected:
+        values = expected["not_contains"]
+        values = [values] if isinstance(values, str) else values
+        checks.extend(str(value).lower() not in output.lower() for value in values)
+    if "citations" in expected:
+        values = expected["citations"]
         values = [values] if isinstance(values, str) else values
         checks.extend(str(value).lower() in output.lower() for value in values)
     if "regex" in expected:
@@ -57,6 +79,21 @@ def grade_output(output: str, expected: dict[str, Any]) -> tuple[bool, float]:
         return True, 1.0
     score = sum(checks) / len(checks)
     return all(checks), score
+
+
+def retrieval_metrics(ranked_ids: list[str], relevant_ids: list[str], k: int) -> tuple[float, float, float]:
+    relevant = set(relevant_ids)
+    if not relevant:
+        return 1.0, 1.0, 1.0
+    ranked = ranked_ids[:k]
+    hits = [index for index, doc_id in enumerate(ranked, start=1) if doc_id in relevant]
+    recall = len({doc_id for doc_id in ranked if doc_id in relevant}) / len(relevant)
+    reciprocal_rank = 1 / hits[0] if hits else 0.0
+    dcg = sum(1 / math.log2(rank + 1) for rank in hits)
+    ideal_hits = min(len(relevant), k)
+    ideal_dcg = sum(1 / math.log2(rank + 1) for rank in range(1, ideal_hits + 1))
+    ndcg = dcg / ideal_dcg if ideal_dcg else 1.0
+    return recall, reciprocal_rank, ndcg
 
 
 def extract_output(payload: dict[str, Any], endpoint: str) -> str:
@@ -159,12 +196,75 @@ def summarize(results: list[EvalResult]) -> dict[str, Any]:
     return summary
 
 
+def summarize_retrieval(results: list[RetrievalEvalResult], k: int) -> dict[str, Any]:
+    if not results:
+        return {"cases": 0, "passed": 0, "pass_rate": 0.0}
+    return {
+        "cases": len(results),
+        "passed": sum(result.passed for result in results),
+        "pass_rate": round(sum(result.passed for result in results) / len(results), 4),
+        f"mean_recall@{k}": round(statistics.mean(result.recall_at_k for result in results), 4),
+        "mrr": round(statistics.mean(result.reciprocal_rank for result in results), 4),
+        f"mean_ndcg@{k}": round(statistics.mean(result.ndcg_at_k for result in results), 4),
+        "avg_latency_ms": round(statistics.mean(result.latency_ms for result in results), 1),
+    }
+
+
+async def run_retrieval(
+    client: httpx.AsyncClient,
+    cases: list[dict[str, Any]],
+    *,
+    k: int,
+    minimum_recall: float,
+) -> list[RetrievalEvalResult]:
+    results: list[RetrievalEvalResult] = []
+    for case in cases:
+        started = time.monotonic()
+        case_id = str(case.get("id", "unnamed"))
+        relevant_ids = [str(item) for item in case.get("relevant_ids", [])]
+        try:
+            if not relevant_ids:
+                raise ValueError("retrieval cases require at least one relevant_ids entry")
+            params: dict[str, Any] = {"q": case["query"], "n": k}
+            if case.get("repo"):
+                params["repo"] = case["repo"]
+            response = await client.get("/internal/kb/search", params=params)
+            response.raise_for_status()
+            ranked_ids = [str(item["doc_id"]) for item in response.json().get("results", [])]
+            recall, reciprocal_rank, ndcg = retrieval_metrics(ranked_ids, relevant_ids, k)
+            results.append(
+                RetrievalEvalResult(
+                    case_id=case_id,
+                    passed=recall >= float(case.get("minimum_recall", minimum_recall)),
+                    recall_at_k=recall,
+                    reciprocal_rank=reciprocal_rank,
+                    ndcg_at_k=ndcg,
+                    ranked_ids=ranked_ids,
+                    relevant_ids=relevant_ids,
+                    latency_ms=int((time.monotonic() - started) * 1000),
+                )
+            )
+        except Exception as exc:
+            results.append(
+                RetrievalEvalResult(
+                    case_id=case_id,
+                    passed=False,
+                    recall_at_k=0.0,
+                    reciprocal_rank=0.0,
+                    ndcg_at_k=0.0,
+                    ranked_ids=[],
+                    relevant_ids=relevant_ids,
+                    latency_ms=int((time.monotonic() - started) * 1000),
+                    error=str(exc),
+                )
+            )
+    return results
+
+
 async def run(config_path: Path) -> tuple[dict[str, Any], bool]:
     config = yaml.safe_load(config_path.read_text()) or {}
     dataset_path = (config_path.parent / config["dataset"]).resolve()
     cases = [json.loads(line) for line in dataset_path.read_text().splitlines() if line.strip()]
-    deployments = [str(item) for item in config["deployments"]]
-    endpoint = str(config.get("endpoint", "responses")).strip("/")
     api_key = os.environ.get(config.get("api_key_env", "RELAY_API_KEY"), "")
     if not api_key:
         raise RuntimeError(f"Set {config.get('api_key_env', 'RELAY_API_KEY')} before running evaluations")
@@ -176,6 +276,27 @@ async def run(config_path: Path) -> tuple[dict[str, Any], bool]:
         timeout=float(config.get("timeout_seconds", 120)),
         limits=limits,
     ) as client:
+        if config.get("mode", "generation") == "retrieval":
+            k = int(config.get("k", 5))
+            results = await run_retrieval(
+                client,
+                cases,
+                k=k,
+                minimum_recall=float(config.get("minimum_recall", 1.0)),
+            )
+            report = {
+                "config": config,
+                "summary": summarize_retrieval(results, k),
+                "results": [asdict(result) for result in results],
+            }
+            output_path = (config_path.parent / config.get("output", "retrieval-results.json")).resolve()
+            output_path.write_text(json.dumps(report, indent=2) + "\n")
+            return report, all(result.passed for result in results)
+
+        deployments = [str(item) for item in config["deployments"]]
+        if not deployments:
+            raise RuntimeError("Generation evaluations require at least one deployment")
+        endpoint = str(config.get("endpoint", "responses")).strip("/")
         semaphore = asyncio.Semaphore(int(config.get("concurrency", 4)))
 
         async def limited(deployment: str, case: dict[str, Any]) -> EvalResult:

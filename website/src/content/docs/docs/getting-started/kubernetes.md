@@ -125,3 +125,30 @@ helm upgrade --install relay oci://ghcr.io/geeper-io/charts/relay --version <ver
 ```
 
 See [Helm values reference](/docs/deployment/helm-reference) for the full list of options.
+
+## Evaluation workload
+
+Enable an in-cluster retrieval gate during install or upgrade:
+
+```yaml
+evaluations:
+  workload: Job
+  mode: retrieval
+  config:
+    k: 5
+    minimum_recall: 1.0
+  cases: |
+    {"id":"auth","query":"Where is authentication implemented?","relevant_ids":["a4d2f98b72e6c941"]}
+```
+
+```bash
+helm upgrade --install relay oci://ghcr.io/geeper-io/charts/relay \
+  --version <version> --namespace relay --create-namespace \
+  -f values-prod.yaml --wait --wait-for-jobs
+
+kubectl -n relay logs -l app.kubernetes.io/component=evaluator --tail=-1
+```
+
+The evaluator reaches Relay through its ClusterIP Service and reports pass/fail through Job status. Set
+`workload: CronJob` and `schedule` for periodic drift checks. Generation evaluations require a dedicated Relay API key
+referenced through `evaluations.apiKeySecret`.

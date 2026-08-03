@@ -1,0 +1,8 @@
+mode: retrieval
+base_url: http://localhost:8000
+api_key_env: PROXY_MASTER_KEY
+dataset: retrieval-cases.example.jsonl
+k: 5
+minimum_recall: 1.0
+timeout_seconds: 120
+output: retrieval-results.json

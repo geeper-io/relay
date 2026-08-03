@@ -78,6 +78,22 @@ Geeper Relay has been deployed.
   {{- end }}
 {{- end }}
 
+{{- if eq (include "relay.evaluationsEnabled" .) "true" }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  EVALUATIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  A {{ .Values.evaluations.workload }} evaluation workload is enabled.
+
+  Inspect evaluator workloads:
+    kubectl get jobs,cronjobs --namespace {{ .Release.Namespace }} \
+      -l app.kubernetes.io/component=evaluator
+
+  Read evaluation reports:
+    kubectl logs --namespace {{ .Release.Namespace }} \
+      -l app.kubernetes.io/component=evaluator --tail=-1
+{{- end }}
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   DOCS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

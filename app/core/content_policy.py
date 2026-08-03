@@ -28,6 +28,17 @@ class ContentPolicy:
             if pattern.search(combined):
                 raise ContentPolicyError("Request blocked by content policy")
 
+    def check_token_count(self, token_count: int) -> None:
+        """Enforce the input ceiling after proxy-side context enrichment."""
+        if self._settings.content_policy_enabled and token_count > self._settings.max_input_tokens:
+            raise ContentPolicyError(
+                f"Input exceeds maximum allowed length ({self._settings.max_input_tokens} tokens)"
+            )
+
+    def contains_blocked_pattern(self, text: str) -> bool:
+        """Return whether untrusted enrichment text matches the active deny patterns."""
+        return self._settings.content_policy_enabled and any(pattern.search(text) for pattern in self._compiled)
+
 
 _policy: ContentPolicy | None = None
 

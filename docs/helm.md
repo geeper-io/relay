@@ -74,6 +74,76 @@ requires either:
 
 For CPU-level concurrency without multiple replicas, increase `config.workers` (uvicorn processes within a single pod).
 
+## Database migrations
+
+Relay applies Alembic migrations before application initialization. Multiple workers or replicas serialize migration
+work with a PostgreSQL advisory lock, so only one process changes the schema while the others wait and verify the same
+head revision. Existing databases from pre-Alembic releases are adopted without recreating tables.
+
+For change-controlled clusters, run the image as a one-off Job before the rollout:
+
+```yaml
+command: ["python", "-m", "app.db.migrate", "upgrade"]
+```
+
+Give the Job the same `DATABASE_URL` and application version as the target Relay Deployment. Back up PostgreSQL before
+the upgrade, especially before migrations that remove or rewrite data.
+
+## Evaluation Job and CronJob
+
+The chart can run the evaluation harness inside the cluster against the release's ClusterIP Service. Retrieval mode
+uses the chart-managed master-key Secret; generation mode requires a dedicated Relay API-key Secret. The workload is
+created automatically when `evaluations.cases` or `evaluations.existingConfigMap` is configured. Set
+`evaluations.enabled: false` explicitly to temporarily suppress it while retaining the configuration.
+
+Run retrieval evaluations as a release-gating Job:
+
+```yaml
+evaluations:
+  workload: Job
+  mode: retrieval
+  config:
+    k: 5
+    minimum_recall: 1.0
+  cases: |
+    {"id":"auth","query":"Where is authentication implemented?","relevant_ids":["a4d2f98b72e6c941"]}
+```
+
+```bash
+helm upgrade --install relay helm/relay --namespace relay \
+  -f values-prod.yaml -f evaluation-values.yaml \
+  --wait --wait-for-jobs
+kubectl -n relay logs -l app.kubernetes.io/component=evaluator --tail=-1
+```
+
+Job mode is a `post-install,post-upgrade` Helm hook by default. With `--wait`, it runs after the Relay rollout; a failed
+evaluation fails the Helm operation. Job names include the release revision and a configuration checksum. An init
+container also waits for Relay readiness. The JSON report is emitted to pod logs and the evaluator's exit code becomes
+Job status. Set `evaluations.jobHook: false` only when a chart-managed, non-gating Job is intentional.
+
+For scheduled end-to-end model evaluation, first store a dedicated Relay key:
+
+```bash
+kubectl -n relay create secret generic relay-evaluation-api-key \
+  --from-literal=RELAY_API_KEY='gr-...'
+```
+
+```yaml
+evaluations:
+  workload: CronJob
+  mode: generation
+  schedule: "0 3 * * *"
+  apiKeySecret: relay-evaluation-api-key
+  config:
+    endpoint: responses
+    deployments: [general]
+  cases: |
+    {"id":"capital","input":"Capital of Finland? City only.","expected":{"equals":"Helsinki"}}
+```
+
+Use `evaluations.existingConfigMap` instead of inline cases for GitOps-managed datasets. The ConfigMap must contain the
+configured `configKey` and `datasetKey`. See `helm/relay/examples/evaluation-*-values.yaml` for complete examples.
+
 ## Secret management
 
 **`PROXY_MASTER_KEY`** lives in its own dedicated secret (`<release>-master-key`) and is never accepted as a plain-text

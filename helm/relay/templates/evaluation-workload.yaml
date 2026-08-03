@@ -1,0 +1,156 @@
+{{- define "relay.evaluationPodTemplate" -}}
+{{- $root := .root -}}
+{{- $evaluation := $root.Values.evaluations -}}
+{{- $mode := $evaluation.mode -}}
+{{- $secretName := $evaluation.apiKeySecret -}}
+{{- if not $secretName -}}
+  {{- if eq $mode "retrieval" -}}
+    {{- $secretName = include "relay.masterKeySecretName" $root -}}
+  {{- else -}}
+    {{- fail "evaluations.apiKeySecret is required for generation mode" -}}
+  {{- end -}}
+{{- end -}}
+{{- $apiKeyEnv := $evaluation.apiKeyEnv -}}
+{{- if not $apiKeyEnv -}}
+{{- $apiKeyEnv = ternary "PROXY_MASTER_KEY" "RELAY_API_KEY" (eq $mode "retrieval") -}}
+{{- end -}}
+{{- $secretKey := $evaluation.apiKeySecretKey | default $apiKeyEnv -}}
+{{- $configMapName := $evaluation.existingConfigMap | default (printf "%s-evaluations" (include "relay.fullname" $root)) -}}
+{{- $baseURL := $evaluation.baseUrl | default (printf "http://%s:%v" (include "relay.fullname" $root) $root.Values.service.port) -}}
+metadata:
+  annotations:
+    checksum/evaluations: {{ .checksum }}
+    {{- with $evaluation.podAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  labels:
+    app.kubernetes.io/name: {{ include "relay.name" $root }}-evaluator
+    app.kubernetes.io/instance: {{ $root.Release.Name }}
+    app.kubernetes.io/component: evaluator
+spec:
+  restartPolicy: Never
+  serviceAccountName: {{ include "relay.serviceAccountName" $root }}
+  securityContext:
+    {{- toYaml $root.Values.podSecurityContext | nindent 4 }}
+  {{- if gt (int $evaluation.waitForRelaySeconds) 0 }}
+  initContainers:
+    - name: wait-for-relay
+      securityContext:
+        {{- toYaml $root.Values.securityContext | nindent 8 }}
+      image: "{{ $root.Values.image.repository }}:{{ $root.Values.image.tag | default $root.Chart.AppVersion }}"
+      imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          deadline=$(( $(date +%s) + {{ $evaluation.waitForRelaySeconds }} ))
+          until python -c 'import urllib.request; urllib.request.urlopen("{{ $baseURL }}/readyz", timeout=3)'; do
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "Relay did not become ready before the evaluation deadline" >&2
+              exit 1
+            fi
+            sleep 5
+          done
+  {{- end }}
+  containers:
+    - name: evaluator
+      securityContext:
+        {{- toYaml $root.Values.securityContext | nindent 8 }}
+      image: "{{ $root.Values.image.repository }}:{{ $root.Values.image.tag | default $root.Chart.AppVersion }}"
+      imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          python -m evals.run --config /etc/relay-evaluations/{{ $evaluation.configKey }}
+          status=$?
+          if [ -f {{ $evaluation.reportPath | quote }} ]; then
+            cat {{ $evaluation.reportPath | quote }}
+          fi
+          exit "$status"
+      env:
+        - name: {{ $apiKeyEnv }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ $secretName }}
+              key: {{ $secretKey }}
+      resources:
+        {{- toYaml $evaluation.resources | nindent 8 }}
+      volumeMounts:
+        - name: evaluations
+          mountPath: /etc/relay-evaluations
+          readOnly: true
+  volumes:
+    - name: evaluations
+      configMap:
+        name: {{ $configMapName }}
+        items:
+          - key: {{ $evaluation.configKey }}
+            path: {{ $evaluation.configKey }}
+          - key: {{ $evaluation.datasetKey }}
+            path: {{ $evaluation.datasetKey }}
+  {{- with $evaluation.nodeSelector }}
+  nodeSelector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $evaluation.affinity }}
+  affinity:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $evaluation.tolerations }}
+  tolerations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end -}}
+
+{{- if eq (include "relay.evaluationsEnabled" .) "true" }}
+{{- $evaluation := .Values.evaluations -}}
+{{- $mode := $evaluation.mode -}}
+{{- $workload := $evaluation.workload -}}
+{{- if not (has $mode (list "retrieval" "generation")) -}}
+{{- fail "evaluations.mode must be retrieval or generation" -}}
+{{- end -}}
+{{- if not (has $workload (list "Job" "CronJob")) -}}
+{{- fail "evaluations.workload must be Job or CronJob" -}}
+{{- end -}}
+{{- if and (eq $workload "CronJob") (not $evaluation.schedule) -}}
+{{- fail "evaluations.schedule is required for CronJob" -}}
+{{- end -}}
+{{- if and (eq $mode "generation") (not $evaluation.apiKeySecret) -}}
+{{- fail "evaluations.apiKeySecret is required for generation mode" -}}
+{{- end -}}
+{{- $checksum := (toJson (dict "evaluations" $evaluation "image" .Values.image) | sha256sum | trunc 8) -}}
+{{- $jobName := printf "%s-eval-%d-%s" (include "relay.fullname" .) .Release.Revision $checksum | trunc 63 | trimSuffix "-" -}}
+apiVersion: batch/v1
+kind: {{ $workload }}
+metadata:
+  name: {{ ternary $jobName (printf "%s-eval" (include "relay.fullname" .) | trunc 63 | trimSuffix "-") (eq $workload "Job") }}
+  {{- if and (eq $workload "Job") $evaluation.jobHook }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: {{ $evaluation.hookWeight | quote }}
+    helm.sh/hook-delete-policy: {{ $evaluation.hookDeletePolicy | quote }}
+  {{- end }}
+  labels:
+    {{- include "relay.labels" . | nindent 4 }}
+    app.kubernetes.io/component: evaluator
+spec:
+  {{- if eq $workload "Job" }}
+  backoffLimit: {{ $evaluation.backoffLimit }}
+  activeDeadlineSeconds: {{ $evaluation.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: {{ $evaluation.ttlSecondsAfterFinished }}
+  template:
+    {{- include "relay.evaluationPodTemplate" (dict "root" . "checksum" $checksum) | nindent 4 }}
+  {{- else }}
+  schedule: {{ $evaluation.schedule | quote }}
+  suspend: {{ $evaluation.suspend }}
+  concurrencyPolicy: {{ $evaluation.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ $evaluation.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ $evaluation.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: {{ $evaluation.backoffLimit }}
+      activeDeadlineSeconds: {{ $evaluation.activeDeadlineSeconds }}
+      ttlSecondsAfterFinished: {{ $evaluation.ttlSecondsAfterFinished }}
+      template:
+        {{- include "relay.evaluationPodTemplate" (dict "root" . "checksum" $checksum) | nindent 8 }}
+  {{- end }}
+{{- end }}

@@ -42,6 +42,21 @@ config:
   metricsRequireAuth: true
   corsAllowedOrigins: []
 
+  admin:
+    enabled: false
+    sessionTtlSeconds: 28800
+    secureCookies: true
+    oidcEnabled: false
+    bootstrapEmails: []
+    allowMasterKeyLogin: true
+
+  portal:
+    enabled: true
+    sessionTtlSeconds: 28800
+    secureCookies: true
+    maxActiveKeys: 10
+    maxKeyTtlDays: 365
+
   llm:
     defaultModel: "gpt-4o"
     allowedModels:
@@ -101,6 +116,14 @@ config:
     scoreThreshold: 0.75
     embeddingModel: "all-MiniLM-L6-v2"
     requireAcl: true
+    hybridEnabled: true
+    candidateMultiplier: 4
+    rrfK: 60
+    denseWeight: 1.0
+    lexicalWeight: 1.0
+    rerankerModel: ""
+    rerankerTopN: 20
+    contextMaxTokens: 4000
 
   pii:
     enabled: true
@@ -114,6 +137,7 @@ config:
       - US_SSN
       - IP_ADDRESS
       - LOCATION
+      - INTERNAL_SECRET
 
   rateLimiting:
     enabled: true
@@ -169,6 +193,60 @@ syncJob:
     limits:
       cpu: "1"
       memory: 1Gi
+
+# ── Evaluation Job / CronJob ─────────────────────────────────────────────────
+# Runs the repository's evaluation harness against the in-cluster Relay Service.
+# Job mode is suitable for release gates; CronJob mode continuously detects drift.
+evaluations:
+  # Auto-enabled when cases or existingConfigMap is set. Set false explicitly
+  # to suppress the workload without deleting its configuration.
+  enabled: null
+  workload: Job                  # Job | CronJob
+  mode: retrieval                # retrieval | generation
+  jobHook: true                  # post-install/post-upgrade release gate
+  hookWeight: 10
+  hookDeletePolicy: before-hook-creation
+  schedule: "0 3 * * *"         # required for CronJob
+  suspend: false
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  backoffLimit: 0
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 86400
+  waitForRelaySeconds: 300
+
+  # Empty uses http://<release-service>:<service.port>.
+  baseUrl: ""
+  # Retrieval defaults to the chart's master-key Secret. Generation must name
+  # a Secret containing a dedicated Relay API key.
+  apiKeySecret: ""
+  apiKeySecretKey: ""
+  apiKeyEnv: ""
+
+  # Either provide inline JSONL cases or mount an existing ConfigMap containing
+  # both configKey and datasetKey.
+  existingConfigMap: ""
+  configKey: eval-config.yaml
+  datasetKey: cases.jsonl
+  cases: ""
+
+  # Values merged into the generated eval YAML. Useful keys include k,
+  # minimum_recall, endpoint, deployments, concurrency, and timeout_seconds.
+  config: {}
+  reportPath: /tmp/relay-eval-results.json
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
 
 # ── Secrets ───────────────────────────────────────────────────────────────────
 # When secrets.create=true a Secret is created from the values below.

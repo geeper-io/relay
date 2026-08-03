@@ -4,10 +4,12 @@ import asyncio
 import logging
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import structlog
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.analytics.langfuse import init_langfuse
 from app.config import get_settings
@@ -16,13 +18,14 @@ from app.core.content_policy import init_content_policy
 from app.core.exceptions import ProxyError, proxy_exception_handler
 from app.core.rate_limiter import init_rate_limiter
 from app.db.analytics import ensure_analytics_view, refresh_analytics_view
-from app.db.engine import create_all_tables
+from app.db.migrate import upgrade_database
 from app.llm.client import init_cache, init_llm_client
 from app.metrics.prometheus import metrics_response
 from app.pii.restorer import init_restorer
 from app.pii.scrubber import init_scrubber
 from app.rag.embedder import init_embedder
 from app.rag.repo_discovery import auto_sync_repos
+from app.rag.reranker import init_reranker
 from app.rag.retriever import init_retriever
 from app.rag.vector_store import init_vector_store
 from app.telemetry import init_telemetry, shutdown_telemetry
@@ -42,8 +45,8 @@ async def lifespan(app: FastAPI):
     log.info("Starting Geeper Relay", log_level=settings.log_level)
 
     # Database
-    await create_all_tables()
-    log.info("Database tables ready")
+    await upgrade_database(settings.database_url)
+    log.info("Database migrations complete")
 
     # Analytics materialized view (Postgres only — no-op on SQLite)
     try:
@@ -66,6 +69,7 @@ async def lifespan(app: FastAPI):
     if settings.rag_enabled:
         log.info("Initializing embedding model and vector store...")
         init_embedder(settings)
+        init_reranker(settings)
         init_vector_store(settings)
         init_retriever(settings)
         log.info("RAG pipeline ready")
@@ -158,6 +162,7 @@ def create_app() -> FastAPI:
     app.add_exception_handler(ProxyError, proxy_exception_handler)
 
     # Routers
+    from app.admin.router import router as dashboard_router
     from app.api.auth import router as auth_router
     from app.api.internal.admin import router as admin_router
     from app.api.internal.kb import router as kb_router
@@ -170,6 +175,7 @@ def create_app() -> FastAPI:
     from app.api.v1.messages import router as messages_router
     from app.api.v1.models import router as models_router
     from app.api.v1.responses import router as responses_router
+    from app.portal.router import router as portal_router
 
     app.include_router(health_router)
     app.include_router(mcp_gateway_router)
@@ -183,6 +189,14 @@ def create_app() -> FastAPI:
     app.include_router(kb_router, prefix="/internal")
     app.include_router(mcp_admin_router, prefix="/internal")
     app.include_router(auth_router)
+    if settings.portal__enabled:
+        app.include_router(portal_router)
+        portal_assets = Path(__file__).resolve().parent / "portal" / "assets"
+        app.mount("/portal/assets", StaticFiles(directory=portal_assets), name="portal-assets")
+    if settings.admin__enabled:
+        app.include_router(dashboard_router)
+        admin_assets = Path(__file__).resolve().parent / "admin" / "assets"
+        app.mount("/admin/assets", StaticFiles(directory=admin_assets), name="admin-assets")
 
     # Prometheus metrics endpoint
     metrics_dependencies = [Depends(require_admin)] if settings.metrics_require_auth else []

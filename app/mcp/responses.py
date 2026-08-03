@@ -16,9 +16,11 @@ from app.config import Settings
 from app.core.auth import ResolvedIdentity
 from app.core.exceptions import ApprovalRequiredError, AuthorizationError, ContentPolicyError
 from app.db.models import MCPResponseApproval
+from app.mcp.approval_grants import consume_matching_grant
 from app.mcp.approvals import create_approval, decide_approval, get_approval
 from app.mcp.grants import issue_mcp_grant
-from app.mcp.policy import MCPPolicyEngine, has_tool_scope
+from app.mcp.policy import has_tool_scope
+from app.mcp.policy_store import active_policy_engine
 from app.metrics import prometheus as metrics
 from app.schemas.responses import ResponsesRequest
 
@@ -49,7 +51,7 @@ async def prepare_responses_mcp_tools(
             db,
         )
     else:
-        relay_tool = await _initial_tool(request.relay_mcp_servers or [], identity, settings)
+        relay_tool = await _initial_tool(request.relay_mcp_servers or [], identity, settings, db)
     return [*(request.tools or []), relay_tool]
 
 
@@ -78,9 +80,21 @@ async def persist_responses_mcp_approvals(
             raise AuthorizationError("Upstream returned an invalid Relay MCP approval request") from exc
         if server not in request.relay_mcp_servers or not isinstance(arguments, dict):
             raise AuthorizationError("Upstream MCP approval is outside the requested Relay server set")
-        decision = MCPPolicyEngine(settings).authorize(identity, server, tool, arguments)
+        engine, _snapshot = await active_policy_engine(db, settings)
+        decision = engine.authorize(identity, server, tool, arguments)
         if decision.action == "deny":
             raise AuthorizationError(f"Upstream MCP approval violates Relay policy: {decision.reason}")
+        standing_grant = None
+        if decision.action == "require_approval":
+            standing_grant = await consume_matching_grant(
+                db,
+                identity=identity,
+                server=server,
+                tool=tool,
+                arguments=arguments,
+                policy_version=decision.policy_version,
+                request_id=request_id,
+            )
         approval = await create_approval(
             db,
             user_id=identity.user_id,
@@ -92,8 +106,21 @@ async def persist_responses_mcp_approvals(
             policy_version=decision.policy_version,
             ttl_seconds=settings.mcp__approval_ttl_seconds,
             request_id=request_id,
+            grant_template=decision.grant if standing_grant is None else None,
         )
         metrics.MCP_APPROVALS.labels(status="requested").inc()
+        if standing_grant is not None or decision.action == "allow":
+            approved_by = "approval-grant" if standing_grant else "policy"
+            approval = await decide_approval(
+                db,
+                approval_id=approval.id,
+                decision="approved",
+                actor=approved_by,
+                reason="Authorized without a manual approval pause",
+                request_id=request_id,
+            )
+            assert approval is not None
+            metrics.MCP_APPROVALS.labels(status="approved").inc()
         db.add(
             MCPResponseApproval(
                 id=str(uuid.uuid4()),
@@ -105,13 +132,18 @@ async def persist_responses_mcp_approvals(
             )
         )
         await db.commit()
-        item["relay_approval"] = {"id": approval.id, "status": approval.status}
+        item["relay_approval"] = {
+            "id": approval.id,
+            "status": approval.status,
+            "grant_id": standing_grant.id if standing_grant else None,
+        }
 
 
 async def _initial_tool(
     servers: list[str],
     identity: ResolvedIdentity,
     settings: Settings,
+    db: AsyncSession,
 ) -> dict[str, Any]:
     if not servers:
         raise ContentPolicyError("relay_mcp_servers must contain at least one configured server")
@@ -121,7 +153,7 @@ async def _initial_tool(
     allowed: list[str] = []
     automatic: list[str] = []
     for server in dict.fromkeys(servers):
-        response = await list_mcp_tools(server, identity, settings)
+        response = await list_mcp_tools(server, identity, settings, db)
         for tool in response["items"]:
             name = gateway_tool_name(server, str(tool["name"]))
             allowed.append(name)

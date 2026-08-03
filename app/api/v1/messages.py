@@ -126,10 +126,37 @@ async def messages(
         # 2. Convert to OpenAI-format dicts for the pipeline
         oai_messages = anthropic_to_openai_messages(request_body)
 
-        # 3. Token count for rate limiting
-        estimated_tokens = llm_client.count_tokens(model, oai_messages)
+        # 4. PII scrubbing
+        scrubbed_messages, restoration_map, pii_count = scrubber.scrub_messages(oai_messages)
+        # 5. RAG context retrieval
+        rag_used = False
+        rag_chunks = 0
+        if settings.rag_enabled:
+            query_text = _last_user_message(scrubbed_messages)
+            rag_repo = raw_request.headers.get("x-relay-repo")
+            rag_filters = rag_filter_for_identity(identity, rag_repo, require_acl=settings.rag_require_acl)
+            context, rag_chunks = await retriever.retrieve_context(query_text, filters=rag_filters)
+            if context and policy.contains_blocked_pattern(context):
+                rag_chunks = 0
+                m.RAG_RETRIEVALS.labels(status="blocked").inc()
+            elif context:
+                context, context_pii_count = scrubber.scrub_untrusted_text(context)
+                pii_count += context_pii_count
+                scrubbed_messages = _inject_rag_context(scrubbed_messages, context)
+                rag_used = True
+                m.RAG_RETRIEVALS.labels(status="hit").inc()
+            else:
+                m.RAG_RETRIEVALS.labels(status="miss").inc()
+        m.RAG_CHUNKS_RETRIEVED.observe(rag_chunks)
+        if pii_count > 0:
+            m.PII_ENTITIES_SCRUBBED.inc(pii_count)
+            m.PII_REQUESTS_AFFECTED.inc()
 
-        # 4. Rate limiting
+        # Count the actual enriched prompt so RAG tokens are reserved and limited.
+        estimated_tokens = llm_client.count_tokens(model, scrubbed_messages)
+        policy.check_token_count(estimated_tokens)
+
+        # 6. Rate limiting applies to the complete provider-bound prompt.
         await rate_limiter.check_and_consume(
             identity.user_id,
             identity.team_id,
@@ -140,28 +167,6 @@ async def messages(
             team_tpm_limit=identity.team_tpm_limit,
             team_daily_token_limit=identity.team_daily_token_limit,
         )
-
-        # 5. PII scrubbing
-        scrubbed_messages, restoration_map, pii_count = scrubber.scrub_messages(oai_messages)
-        if pii_count > 0:
-            m.PII_ENTITIES_SCRUBBED.inc(pii_count)
-            m.PII_REQUESTS_AFFECTED.inc()
-
-        # 6. RAG context retrieval
-        rag_used = False
-        rag_chunks = 0
-        if settings.rag_enabled:
-            query_text = _last_user_message(scrubbed_messages)
-            rag_repo = raw_request.headers.get("x-relay-repo")
-            rag_filters = rag_filter_for_identity(identity, rag_repo, require_acl=settings.rag_require_acl)
-            context, rag_chunks = await retriever.retrieve_context(query_text, filters=rag_filters)
-            if context:
-                scrubbed_messages = _inject_rag_context(scrubbed_messages, context)
-                rag_used = True
-                m.RAG_RETRIEVALS.labels(status="hit").inc()
-            else:
-                m.RAG_RETRIEVALS.labels(status="miss").inc()
-        m.RAG_CHUNKS_RETRIEVED.observe(rag_chunks)
 
         # 7. LLM call
         llm_kwargs: dict = {}

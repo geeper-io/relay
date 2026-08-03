@@ -1,0 +1,12 @@
+evaluations:
+  workload: CronJob
+  mode: generation
+  schedule: "0 3 * * *"
+  apiKeySecret: relay-evaluation-api-key
+  apiKeySecretKey: RELAY_API_KEY
+  config:
+    endpoint: responses
+    deployments: [general]
+    concurrency: 4
+  cases: |
+    {"id":"capital","input":"Capital of Finland? City only.","expected":{"equals":"Helsinki"}}

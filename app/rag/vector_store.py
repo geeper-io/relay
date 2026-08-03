@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import math
+import re
+from collections import Counter
 from dataclasses import dataclass
 
 import chromadb
@@ -18,6 +21,29 @@ class QueryResult:
     text: str
     metadata: dict
     distance: float
+    lexical_score: float = 0.0
+    fused_score: float = 0.0
+    rerank_score: float | None = None
+
+
+_LEXICAL_TOKEN_RE = re.compile(r"[A-Za-z0-9_./:-]{3,}")
+_LEXICAL_STOP_WORDS = {
+    "and",
+    "are",
+    "for",
+    "from",
+    "how",
+    "the",
+    "this",
+    "what",
+    "when",
+    "where",
+    "with",
+}
+
+
+def lexical_tokens(text: str) -> list[str]:
+    return [token.lower() for token in _LEXICAL_TOKEN_RE.findall(text) if token.lower() not in _LEXICAL_STOP_WORDS]
 
 
 def init_vector_store(settings: Settings) -> chromadb.Collection:
@@ -116,3 +142,63 @@ def query(
     ):
         output.append(QueryResult(doc_id=doc_id, text=doc, metadata=meta, distance=dist))
     return output
+
+
+def lexical_query(
+    query_text: str,
+    n_results: int = 20,
+    where: dict | None = None,
+) -> list[QueryResult]:
+    """Return BM25-ranked candidates selected by Chroma full-text filters."""
+    terms = list(dict.fromkeys(lexical_tokens(query_text)))[:8]
+    if not terms:
+        return []
+
+    collection = get_collection()
+    document_filters = [{"$contains": term} for term in terms]
+    kwargs: dict = {
+        "where_document": document_filters[0] if len(document_filters) == 1 else {"$or": document_filters},
+        "limit": max(n_results * 8, n_results),
+        "include": ["documents", "metadatas"],
+    }
+    if where:
+        kwargs["where"] = where
+    rows = collection.get(**kwargs)
+    documents = rows.get("documents") or []
+    if not documents:
+        return []
+
+    tokenized = [lexical_tokens(document) for document in documents]
+    average_length = sum(len(tokens) for tokens in tokenized) / len(tokenized)
+    document_frequency = Counter(term for term in terms for tokens in tokenized if term in set(tokens))
+    total_documents = len(tokenized)
+    scored: list[QueryResult] = []
+    for doc_id, document, metadata, tokens in zip(
+        rows["ids"],
+        documents,
+        rows.get("metadatas") or [{} for _ in documents],
+        tokenized,
+        strict=True,
+    ):
+        counts = Counter(tokens)
+        score = 0.0
+        for term in terms:
+            frequency = counts[term]
+            if not frequency:
+                continue
+            inverse_frequency = math.log(1 + (total_documents - document_frequency[term] + 0.5) / (
+                document_frequency[term] + 0.5
+            ))
+            length_norm = 1.5 * (1 - 0.75 + 0.75 * len(tokens) / max(average_length, 1))
+            score += inverse_frequency * frequency * 2.5 / (frequency + length_norm)
+        if score > 0:
+            scored.append(
+                QueryResult(
+                    doc_id=doc_id,
+                    text=document,
+                    metadata=metadata or {},
+                    distance=1.0,
+                    lexical_score=score,
+                )
+            )
+    return sorted(scored, key=lambda item: (-item.lexical_score, item.doc_id))[:n_results]

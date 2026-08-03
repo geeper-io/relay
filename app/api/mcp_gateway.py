@@ -60,7 +60,7 @@ async def mcp_gateway(
         return _jsonrpc_result(message.id, {})
     if message.method == "tools/list":
         try:
-            tools = await _gateway_tools(identity, settings)
+            tools = await _gateway_tools(identity, settings, db)
             return _jsonrpc_result(message.id, {"tools": tools})
         except ProxyError as exc:
             return _jsonrpc_error(message.id, -32000, exc.message)
@@ -69,12 +69,16 @@ async def mcp_gateway(
     return _jsonrpc_error(message.id, -32601, f"Method not found: {message.method}")
 
 
-async def _gateway_tools(identity: ResolvedIdentity, settings: Settings) -> list[dict[str, Any]]:
+async def _gateway_tools(
+    identity: ResolvedIdentity,
+    settings: Settings,
+    db: AsyncSession,
+) -> list[dict[str, Any]]:
     tools = [_approval_status_definition()]
     for server_name, server in settings.mcp_servers.items():
         if server.get("enabled", True) is False:
             continue
-        response = await list_mcp_tools(server_name, identity, settings)
+        response = await list_mcp_tools(server_name, identity, settings, db)
         for tool in response["items"]:
             published = dict(tool)
             published["name"] = gateway_tool_name(server_name, str(tool["name"]))

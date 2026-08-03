@@ -110,3 +110,15 @@ Knowledge-base PVC name.
 {{- define "relay.kbPvcName" -}}
 {{- printf "%s-kb" (include "relay.fullname" .) }}
 {{- end }}
+
+{{/*
+Enable evaluations when configured, with an explicit boolean taking precedence.
+This makes adding a dataset sufficient while preserving an emergency off switch.
+*/}}
+{{- define "relay.evaluationsEnabled" -}}
+{{- if kindIs "bool" .Values.evaluations.enabled -}}
+{{- .Values.evaluations.enabled -}}
+{{- else -}}
+{{- or (not (empty .Values.evaluations.cases)) (not (empty .Values.evaluations.existingConfigMap)) -}}
+{{- end -}}
+{{- end }}

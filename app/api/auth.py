@@ -23,9 +23,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.admin.roles import record_admin_identity, resolve_admin_role
+from app.admin.session import issue_admin_session, set_admin_session_cookie
 from app.config import Settings, get_settings
 from app.db.engine import get_db
 from app.db.repositories.users import create_api_key, create_user, get_user_by_external_id
+from app.portal.session import issue_portal_session, set_portal_session_cookie
 
 router = APIRouter(tags=["auth"])
 
@@ -37,8 +40,8 @@ _GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 # ── State signing (HMAC-SHA256, no server-side storage needed) ────────────────
 
 
-def _make_state(secret: str) -> str:
-    nonce = secrets.token_urlsafe(32)
+def _make_state(secret: str, *, flow: str = "api_key") -> str:
+    nonce = f"{flow}:{secrets.token_urlsafe(32)}"
     sig = hmac.new(secret.encode(), nonce.encode(), hashlib.sha256).hexdigest()[:16]
     return f"{nonce}.{sig}"
 
@@ -50,6 +53,12 @@ def _verify_state(state: str, secret: str) -> bool:
     nonce, sig = parts
     expected = hmac.new(secret.encode(), nonce.encode(), hashlib.sha256).hexdigest()[:16]
     return hmac.compare_digest(sig, expected)
+
+
+def _state_flow(state: str) -> str:
+    nonce = state.split(".", 1)[0]
+    flow, separator, _value = nonce.partition(":")
+    return flow if separator and flow in {"portal", "api_key", "admin"} else "portal"
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -102,14 +111,32 @@ def _identity_claims(settings: Settings, userinfo: dict) -> tuple[str, str, str]
 
 
 @router.get("/auth/login", include_in_schema=False)
-async def login(settings: Settings = Depends(get_settings)):
+async def login(
+    issue_key: bool = False,
+    settings: Settings = Depends(get_settings),
+):
     if not settings.oauth_enabled:
         raise HTTPException(
             status_code=501,
             detail="OpenID Connect is not configured on this proxy",
         )
 
-    state = _make_state(settings.proxy_master_key)
+    if not settings.portal__enabled and not issue_key:
+        raise HTTPException(status_code=404, detail="Developer portal is disabled")
+    return await _login_redirect(settings, flow="api_key" if issue_key else "portal")
+
+
+@router.get("/admin/auth/login", include_in_schema=False)
+async def admin_oidc_login(settings: Settings = Depends(get_settings)):
+    if not settings.admin__enabled or not settings.admin__oidc_enabled:
+        raise HTTPException(status_code=404, detail="Admin OIDC login is disabled")
+    if not settings.oauth_enabled:
+        raise HTTPException(status_code=501, detail="OpenID Connect is not configured on this proxy")
+    return await _login_redirect(settings, flow="admin")
+
+
+async def _login_redirect(settings: Settings, *, flow: str) -> RedirectResponse:
+    state = _make_state(settings.proxy_master_key, flow=flow)
     redirect_uri = f"{settings.auth_base_url.rstrip('/')}/auth/callback"
     client_id, _client_secret = _client_credentials(settings)
     async with httpx.AsyncClient() as client:
@@ -137,6 +164,11 @@ async def oauth_callback(
 
     if not _verify_state(state, settings.proxy_master_key):
         raise HTTPException(status_code=400, detail="Invalid OAuth state — please try again")
+    flow = _state_flow(state)
+    if flow == "admin" and (not settings.admin__enabled or not settings.admin__oidc_enabled):
+        raise HTTPException(status_code=404, detail="Admin OIDC login is disabled")
+    if flow == "portal" and not settings.portal__enabled:
+        raise HTTPException(status_code=404, detail="Developer portal is disabled")
 
     redirect_uri = f"{settings.auth_base_url.rstrip('/')}/auth/callback"
     client_id, client_secret = _client_credentials(settings)
@@ -185,7 +217,43 @@ async def oauth_callback(
     if user is None:
         user = await create_user(db, external_id=external_id)
 
-    # Issue a fresh API key on every login
+    if flow == "admin":
+        await record_admin_identity(
+            db,
+            user_id=user.id,
+            email=email,
+            display_name=name,
+        )
+        role = await resolve_admin_role(db, user_id=user.id, email=email, settings=settings)
+        if role is None:
+            raise HTTPException(status_code=403, detail="This identity has no Relay admin role")
+        token, _session = issue_admin_session(
+            settings,
+            role=role,
+            actor=f"oidc:{user.id}",
+            user_id=user.id,
+            email=email,
+            display_name=name,
+        )
+        response = RedirectResponse("/admin", status_code=303)
+        set_admin_session_cookie(response, token, settings)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    if flow == "portal":
+        token, _session = issue_portal_session(
+            settings,
+            user_id=user.id,
+            email=email,
+            display_name=name,
+        )
+        response = RedirectResponse("/portal", status_code=303)
+        set_portal_session_cookie(response, token, settings)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    # Backward-compatible one-shot flow for clients explicitly using
+    # /auth/login?issue_key=true during the portal migration.
     raw_key, _api_key = await create_api_key(
         db,
         user_id=user.id,

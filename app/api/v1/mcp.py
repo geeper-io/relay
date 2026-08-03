@@ -15,6 +15,7 @@ from app.core.auth import ResolvedIdentity, resolve_identity
 from app.core.exceptions import AuthorizationError, ProxyError
 from app.db.engine import get_db
 from app.db.models import AuditLog
+from app.mcp.approval_grants import consume_matching_grant, find_matching_grant
 from app.mcp.approvals import (
     approval_metadata,
     arguments_hash,
@@ -24,7 +25,8 @@ from app.mcp.approvals import (
     issue_approval_token,
 )
 from app.mcp.client import MCPStreamableHTTPClient
-from app.mcp.policy import MCPPolicyDecision, MCPPolicyEngine, has_any_mcp_scope
+from app.mcp.policy import MCPPolicyDecision, has_any_mcp_scope
+from app.mcp.policy_store import active_policy_engine, load_active_policy
 from app.mcp.results import sanitize_tool_result
 from app.metrics import prometheus as metrics
 from app.pii.scrubber import PIIScrubber, get_scrubber
@@ -38,6 +40,7 @@ router = APIRouter(tags=["mcp"])
 async def list_mcp_servers(
     identity: ResolvedIdentity = Depends(resolve_identity),
     settings: Settings = Depends(get_settings),
+    db: AsyncSession = Depends(get_db),
 ):
     _require_mcp_access(identity, settings)
     items = []
@@ -51,7 +54,8 @@ async def list_mcp_servers(
                 "transport": "streamable_http",
             }
         )
-    return {"items": items, "policy_version": settings.mcp_active_policy_version}
+    snapshot = await load_active_policy(db, settings)
+    return {"items": items, "policy_version": snapshot.version}
 
 
 @router.get("/mcp/servers/{server_name}/tools")
@@ -59,27 +63,43 @@ async def list_mcp_tools(
     server_name: str,
     identity: ResolvedIdentity = Depends(resolve_identity),
     settings: Settings = Depends(get_settings),
+    db: AsyncSession = Depends(get_db),
 ):
     _require_mcp_access(identity, settings)
     client = MCPStreamableHTTPClient(settings)
     tools = await client.list_tools(server_name)
-    engine = MCPPolicyEngine(settings)
+    engine, snapshot = await active_policy_engine(db, settings)
     visible = []
     for tool in tools:
         name = str(tool.get("name", ""))
         decision = engine.authorize(identity, server_name, name)
         if decision.action == "deny":
             continue
+        grant = None
+        authorization = decision.action
+        if decision.action == "require_approval":
+            grant = await find_matching_grant(
+                db,
+                identity=identity,
+                server=server_name,
+                tool=name,
+                arguments=None,
+                policy_version=decision.policy_version,
+                require_unconstrained=True,
+            )
+            if grant is not None:
+                authorization = "allow"
         visible.append(
             {
                 **tool,
                 "relay": {
-                    "authorization": decision.action,
+                    "authorization": authorization,
                     "policy_version": decision.policy_version,
+                    "grant_id": grant.id if grant else None,
                 },
             }
         )
-    return {"items": visible, "policy_version": settings.mcp_active_policy_version}
+    return {"items": visible, "policy_version": snapshot.version}
 
 
 @router.post("/mcp/servers/{server_name}/tools/{tool_name}/invoke")
@@ -95,7 +115,8 @@ async def invoke_mcp_tool(
 ):
     _require_mcp_access(identity, settings)
     request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
-    decision = MCPPolicyEngine(settings).authorize(identity, server_name, tool_name, body.arguments)
+    engine, _snapshot = await active_policy_engine(db, settings)
+    decision = engine.authorize(identity, server_name, tool_name, body.arguments)
     _record_decision_metric(server_name, tool_name, decision)
     annotate_current_span(
         **{
@@ -124,6 +145,7 @@ async def invoke_mcp_tool(
         raise AuthorizationError(decision.reason)
 
     approval_id: str | None = None
+    grant_id: str | None = None
     if identity.mcp_grant_approval_id:
         if (
             identity.mcp_grant_server != server_name
@@ -151,7 +173,33 @@ async def invoke_mcp_tool(
         metrics.MCP_APPROVALS.labels(status="consumed").inc()
     elif decision.action == "require_approval":
         approval_token = body.approval_token
-        if not approval_token:
+        if approval_token:
+            approval = await consume_approval(
+                db,
+                token=approval_token,
+                settings=settings,
+                user_id=identity.user_id,
+                server=server_name,
+                tool=tool_name,
+                arguments=body.arguments,
+                policy_version=decision.policy_version,
+                request_id=request_id,
+            )
+            approval_id = approval.id
+            metrics.MCP_APPROVALS.labels(status="consumed").inc()
+        else:
+            standing_grant = await consume_matching_grant(
+                db,
+                identity=identity,
+                server=server_name,
+                tool=tool_name,
+                arguments=body.arguments,
+                policy_version=decision.policy_version,
+                request_id=request_id,
+            )
+            if standing_grant is not None:
+                grant_id = standing_grant.id
+        if approval_token is None and grant_id is None:
             approval = await create_approval(
                 db,
                 user_id=identity.user_id,
@@ -163,6 +211,7 @@ async def invoke_mcp_tool(
                 policy_version=decision.policy_version,
                 ttl_seconds=settings.mcp__approval_ttl_seconds,
                 request_id=request_id,
+                grant_template=decision.grant,
             )
             metrics.MCP_APPROVALS.labels(status="requested").inc()
             return JSONResponse(
@@ -172,19 +221,6 @@ async def invoke_mcp_tool(
                     "approval": _json_metadata(approval_metadata(approval)),
                 },
             )
-        approval = await consume_approval(
-            db,
-            token=approval_token,
-            settings=settings,
-            user_id=identity.user_id,
-            server=server_name,
-            tool=tool_name,
-            arguments=body.arguments,
-            policy_version=decision.policy_version,
-            request_id=request_id,
-        )
-        approval_id = approval.id
-        metrics.MCP_APPROVALS.labels(status="consumed").inc()
 
     started = time.monotonic()
     try:
@@ -208,6 +244,7 @@ async def invoke_mcp_tool(
                 "arguments_hash": arguments_hash(body.arguments),
                 "policy_version": decision.policy_version,
                 "approval_id": approval_id,
+                "grant_id": grant_id,
                 "latency_ms": int(latency * 1000),
                 "pii_entities_scrubbed": pii_count,
                 "is_error": bool(sanitized.get("isError", False)),
@@ -218,6 +255,7 @@ async def invoke_mcp_tool(
             "tool": tool_name,
             "policy_version": decision.policy_version,
             "approval_id": approval_id,
+            "grant_id": grant_id,
             "result": sanitized,
         }
     except ProxyError as exc:
@@ -234,6 +272,7 @@ async def invoke_mcp_tool(
                 "policy_version": decision.policy_version,
                 "arguments_hash": arguments_hash(body.arguments),
                 "approval_id": approval_id,
+                "grant_id": grant_id,
                 "error_code": exc.error_code,
                 "latency_ms": int(latency * 1000),
             },

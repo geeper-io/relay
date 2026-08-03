@@ -95,9 +95,9 @@ diff --git a/auth/middleware.go b/auth/middleware.go
 
 | Stage | Behaviour |
 |---|---|
-| PII scrubbing | Diffs bypass scrubbing — identifiers and class names produce too many false positives |
+| PII scrubbing | Diffs are scanned; use `pii.allow_list` for stable false-positive identifiers |
 | RAG | The diff is the retrieval query; authenticated scopes authorize repositories and `X-Relay-Repo` narrows them |
-| LLM call | Model receives diff + retrieved context and returns a review grounded in your codebase |
+| LLM call | Model receives the scrubbed diff plus redacted, explicitly untrusted retrieved context |
 
 ## Incremental sync
 

@@ -1,6 +1,6 @@
 ---
 title: OIDC & Google SSO
-description: Self-service API key provisioning with any OpenID Connect provider or legacy Google configuration.
+description: Self-service developer portal with any OpenID Connect provider or legacy Google configuration.
 ---
 
 Relay supports provider discovery for Okta, Entra ID, Keycloak, Auth0, Dex, and other OpenID Connect providers. The
@@ -75,8 +75,8 @@ User → GET /auth/login
      → proxy verifies HMAC state, exchanges code for token
      → fetches user profile (name, email) from Google
      → upserts user in database (create on first login, update on subsequent)
-     → creates API key named "sso"
-     → returns HTML page showing the key
+     → issues a signed, HttpOnly portal session
+     → redirects to /portal
 ```
 
 ## State parameter security
@@ -89,26 +89,27 @@ state = nonce + "." + HMAC-SHA256(secret, nonce)[:16]
 
 This is **stateless** — no server-side session storage is required. It works correctly with multiple uvicorn workers and multiple Kubernetes replicas. The `PROXY_MASTER_KEY` is used as the HMAC secret.
 
-## Key management
+## Developer portal
 
-- Each login creates a **new** key named `sso` — it does not replace the previous one
-- SSO keys receive configured `oidc.default_key_scopes` (`chat` and `responses` by default) and no RAG access
-- Existing keys remain valid until expiry or revocation through `DELETE /internal/api-keys/{key_id}`
-- Administrators can find SSO key IDs with `GET /internal/api-keys?user_id={user_id}`
-- The key is displayed once in the callback HTML page — users should save it immediately
+The portal shows each user's effective limits, recent usage, model breakdown, and safe key metadata. Users create,
+rotate, and revoke only their own keys. Self-service scopes are capped by `oidc.default_key_scopes`, secrets are shown
+once, and key mutations require a session-bound CSRF token.
+
+It also includes copy-ready setup for OpenAI-compatible and Anthropic SDKs, Claude Code, remote MCP clients, and
+Responses API workflows. The old one-shot key page is temporarily available at `/auth/login?issue_key=true`.
 
 ## Disabling
 
 Login is disabled when neither complete OIDC nor Google credentials are configured. `/auth/login` then returns 501.
+Set `portal.enabled: false` to disable the self-service UI independently.
 
 ## Restricting to a specific domain
 
-The current implementation does not restrict logins by email domain — any Google account can obtain a key. To restrict access:
+Set `oidc.allowed_email_domains` even when using the Google compatibility credentials:
 
-1. Set `GOOGLE_CLIENT_ID` only internally and do not publicly advertise `/auth/login`
-2. Or add domain validation to `app/api/auth.py` after fetching the user profile:
-
-```python
-if not userinfo["email"].endswith("@yourcompany.com"):
-    raise HTTPException(status_code=403, detail="Unauthorized domain")
+```yaml
+oidc:
+  allowed_email_domains: [example.com]
 ```
+
+Relay rejects identities outside the allowlist before creating a user or portal session.

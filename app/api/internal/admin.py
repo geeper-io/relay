@@ -2,15 +2,24 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.admin.roles import (
+    AdminRole,
+    list_admin_identities,
+    list_admin_roles,
+    remove_admin_role,
+    set_admin_role,
+)
 from app.core.auth import require_admin
 from app.db.engine import get_db
-from app.db.models import ApiKey
+from app.db.models import AdminRoleAssignment, ApiKey, User
 from app.db.repositories.usage import get_leaderboard, get_usage_summary
 from app.db.repositories.users import (
     create_api_key,
@@ -23,6 +32,85 @@ from app.db.repositories.users import (
 )
 
 router = APIRouter(tags=["admin"], dependencies=[Depends(require_admin)])
+
+
+class AdminRoleRequest(BaseModel):
+    role: AdminRole
+
+
+def _admin_role_metadata(assignment: AdminRoleAssignment) -> dict:
+    return {
+        "user_id": assignment.user_id,
+        "role": assignment.role,
+        "assigned_by": assignment.assigned_by,
+        "created_at": assignment.created_at,
+        "updated_at": assignment.updated_at,
+    }
+
+
+@router.get("/admin-roles")
+async def list_admin_roles_endpoint(
+    role: AdminRole | None = None,
+    limit: int = Query(default=200, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    assignments = await list_admin_roles(db, role=role, limit=limit)
+    return {"items": [_admin_role_metadata(item) for item in assignments]}
+
+
+@router.get("/admin-identities")
+async def list_admin_identities_endpoint(
+    limit: int = Query(default=200, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    identities = await list_admin_identities(db, limit=limit)
+    return {
+        "items": [
+            {
+                "user_id": identity.user_id,
+                "email": identity.email,
+                "display_name": identity.display_name,
+                "last_seen_at": identity.last_seen_at,
+                "role": assignment.role if assignment else None,
+            }
+            for identity, assignment in identities
+        ]
+    }
+
+
+@router.put("/admin-roles/{user_id}")
+async def set_admin_role_endpoint(
+    user_id: str,
+    body: AdminRoleRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    if await db.get(User, user_id) is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    assignment = await set_admin_role(
+        db,
+        user_id=user_id,
+        role=body.role,
+        actor="master-key",
+        request_id=request.headers.get("x-request-id", str(uuid.uuid4())),
+    )
+    return _admin_role_metadata(assignment)
+
+
+@router.delete("/admin-roles/{user_id}", status_code=204)
+async def remove_admin_role_endpoint(
+    user_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    removed = await remove_admin_role(
+        db,
+        user_id=user_id,
+        actor="master-key",
+        request_id=request.headers.get("x-request-id", str(uuid.uuid4())),
+    )
+    if not removed:
+        raise HTTPException(status_code=404, detail="Admin role assignment not found")
 
 
 @router.get("/usage")

@@ -24,7 +24,9 @@ CUSTOM_RECOGNIZERS: list[PatternRecognizer] = [
     PatternRecognizer(
         supported_entity="INTERNAL_SECRET",
         patterns=[
-            Pattern("INTERNAL_SECRET_LONG", r"\b[A-Za-z0-9+/]{40,}={0,2}\b", 0.5),
+            Pattern("OPENAI_STYLE_KEY", r"\bsk-[A-Za-z0-9_-]{20,}\b", 0.95),
+            Pattern("GITHUB_TOKEN", r"\bgh[pousr]_[A-Za-z0-9]{20,}\b", 0.95),
+            Pattern("BEARER_TOKEN", r"\bBearer\s+[A-Za-z0-9._~+/=-]{16,}\b", 0.9),
         ],
         context=["token", "secret", "key", "api", "auth", "bearer"],
     ),

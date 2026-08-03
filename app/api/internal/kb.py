@@ -15,6 +15,7 @@ from app.rag import vector_store
 from app.rag.ingestion import SUPPORTED_EXTENSIONS, ingest_file
 from app.rag.ingestors.github import GitHubIngestor
 from app.rag.ingestors.gitlab import GitLabIngestor
+from app.rag.retriever import RAGRetriever, get_retriever
 from app.rag.sync_engine import sync_ingestor
 
 router = APIRouter(tags=["knowledge-base"], dependencies=[Depends(require_admin)])
@@ -85,21 +86,23 @@ async def kb_search(
     n: int = 10,
     repo: str | None = None,
     settings: Settings = Depends(get_settings),
+    retriever: RAGRetriever = Depends(get_retriever),
 ):
-    """Debug: run a raw vector search and return chunks with scores."""
-    from app.rag.embedder import embed_one
-
-    embedding = embed_one(q)
+    """Debug the production hybrid ranking path and return source provenance."""
     where = {"repo": repo} if repo else None
-    results = vector_store.query(query_embedding=embedding, n_results=n, where=where)
+    results = await retriever.retrieve_ranked(q, filters=where, limit=n)
     threshold = settings.rag_score_threshold
     return {
         "query": q,
         "threshold": threshold,
         "results": [
             {
+                "doc_id": r.doc_id,
                 "distance": round(r.distance, 4),
                 "above_threshold": r.distance > threshold,
+                "lexical_score": round(r.lexical_score, 6),
+                "fused_score": round(r.fused_score, 6),
+                "rerank_score": round(r.rerank_score, 6) if r.rerank_score is not None else None,
                 "source": r.metadata.get("source"),
                 "symbol": r.metadata.get("symbol"),
                 "doc_type": r.metadata.get("doc_type"),

@@ -5,6 +5,22 @@ description: Full reference for config.yaml — all settings with defaults and H
 
 The proxy reads a YAML config file on startup. The path is set via the `CONFIG_FILE` environment variable (default: `config/config.yaml`). In Kubernetes the file is mounted from a ConfigMap generated from `values.yaml`.
 
+## Database and migrations
+
+Set `DATABASE_URL` to an async SQLAlchemy URL. Local development defaults to
+`sqlite+aiosqlite:///./proxy.db`; production should use PostgreSQL with `postgresql+asyncpg://...`.
+
+Relay applies versioned Alembic migrations at startup. You can run or inspect them explicitly before a rollout:
+
+```bash
+python -m app.db.migrate upgrade
+python -m app.db.migrate current
+```
+
+Use this wrapper when upgrading an installation that predates Alembic. It recognizes complete legacy schema stages,
+stamps the correct revision, and applies only missing migrations. Concurrent replicas serialize upgrades with a
+database advisory lock. The wrapper refuses partial or unrelated schemas instead of guessing.
+
 ## `server`
 
 | Key | Type | Default | Description |
@@ -92,10 +108,20 @@ See [MCP gateway and approvals](/docs/features/mcp-gateway).
 | `scopes` | list | `[openid,email,profile]` | Authorization request scopes |
 | `require_verified_email` | bool | `true` | Require a verified-email claim for general OIDC |
 | `allowed_email_domains` | list | `[]` | Optional sign-in domain allowlist |
-| `default_key_scopes` | list | `[chat,responses]` | Scopes granted to self-service SSO keys |
+| `default_key_scopes` | list | `[chat,responses]` | Maximum scopes users may select for portal keys |
 | `token_endpoint_auth_method` | string | `client_secret_post` | `client_secret_post` or `client_secret_basic` |
 
 Client ID/secret should be supplied through `OIDC__CLIENT_ID` and `OIDC__CLIENT_SECRET` or the equivalent Helm Secret.
+
+## `portal`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | bool | `true` | Enable the SSO-backed developer portal at `/portal` |
+| `session_ttl_seconds` | int | `28800` | Signed browser-session lifetime |
+| `secure_cookies` | bool | `true` | Send the portal cookie only over HTTPS |
+| `max_active_keys` | int | `10` | Maximum active self-service keys per user |
+| `max_key_ttl_days` | int | `365` | Longest expiry users may choose |
 
 ## `rag`
 
@@ -103,9 +129,15 @@ Client ID/secret should be supplied through `OIDC__CLIENT_ID` and `OIDC__CLIENT_
 |---|---|---|---|
 | `enabled` | bool | `true` | Enable RAG context injection |
 | `top_k` | int | `5` | Maximum chunks to retrieve |
-| `score_threshold` | float | `0.4` | Minimum cosine similarity score |
+| `score_threshold` | float | `0.75` | Maximum dense cosine distance |
 | `embedding_model` | string | `"all-MiniLM-L6-v2"` | sentence-transformers model for embedding |
 | `require_acl` | bool | `true` | Derive repository filters from authenticated API-key scopes |
+| `hybrid_enabled` | bool | `true` | Fuse dense and BM25-style lexical candidate rankings |
+| `candidate_multiplier` | int | `4` | Candidate pool size relative to `top_k` |
+| `rrf_k` | int | `60` | Reciprocal-rank-fusion smoothing constant |
+| `reranker_model` | string | `""` | Optional pinned/local sentence-transformers CrossEncoder |
+| `reranker_top_n` | int | `20` | Fused candidates sent to the cross-encoder |
+| `context_max_tokens` | int | `4000` | Maximum formatted retrieval-context tokens |
 
 With ACL enforcement enabled, keys require `rag:repo:owner/name` for individual repositories or `rag:*` for all
 repositories. `X-Relay-Repo` narrows access; it never grants access.
@@ -243,6 +275,7 @@ pii:
     - US_SSN
     - IP_ADDRESS
     - LOCATION
+    - INTERNAL_SECRET
 
 rate_limiting:
   enabled: true

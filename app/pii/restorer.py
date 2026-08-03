@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import re
 
-_PLACEHOLDER_RE = re.compile(r"<<PII_[A-Z_]+_[a-f0-9]{8}>>")
+# Accept legacy 8-character IDs while emitting request-local 128-bit IDs.
+_PLACEHOLDER_RE = re.compile(r"<<PII_[A-Z_]+_[a-f0-9]{8,32}>>")
+_PLACEHOLDER_PREFIX = "<<PII_"
+_MAX_PLACEHOLDER_LENGTH = 128
 
 
 class PIIRestorer:
@@ -27,12 +30,8 @@ class PIIRestorer:
             return
 
         buffer = ""
-        # Partial match prefix — longest possible partial placeholder start
-        partial_prefix = "<<PII_"
-
         for chunk in chunks:
             buffer += chunk
-            # Keep buffering if we have a possible partial placeholder at the end
             while True:
                 match = _PLACEHOLDER_RE.search(buffer)
                 if match:
@@ -43,20 +42,32 @@ class PIIRestorer:
                     # Restore the placeholder itself
                     yield restoration_map.get(match.group(0), match.group(0))
                     buffer = buffer[match.end() :]
-                else:
-                    # Check if buffer ends with a partial placeholder
-                    partial_match = False
-                    for i in range(1, len(partial_prefix) + 1):
-                        if buffer.endswith(partial_prefix[:i]):
-                            partial_match = True
-                            break
-                    if partial_match and len(buffer) < 40:
-                        # Keep buffering
-                        break
-                    else:
+                    continue
+
+                # Retain a complete prefix and its unfinished placeholder body.
+                placeholder_start = buffer.rfind(_PLACEHOLDER_PREFIX)
+                if placeholder_start >= 0 and ">>" not in buffer[placeholder_start:]:
+                    if placeholder_start:
+                        yield self.restore(buffer[:placeholder_start], restoration_map)
+                    buffer = buffer[placeholder_start:]
+                    # Bound memory if an upstream emits a malformed placeholder.
+                    if len(buffer) > _MAX_PLACEHOLDER_LENGTH:
                         yield buffer
                         buffer = ""
-                        break
+                    break
+
+                # Retain a suffix which may become the placeholder prefix next chunk.
+                keep = 0
+                for length in range(1, len(_PLACEHOLDER_PREFIX)):
+                    if buffer.endswith(_PLACEHOLDER_PREFIX[:length]):
+                        keep = length
+                if keep:
+                    yield self.restore(buffer[:-keep], restoration_map)
+                    buffer = buffer[-keep:]
+                else:
+                    yield self.restore(buffer, restoration_map)
+                    buffer = ""
+                break
 
         if buffer:
             yield self.restore(buffer, restoration_map)

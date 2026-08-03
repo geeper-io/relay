@@ -42,11 +42,10 @@ def get_session_factory():
 
 
 async def create_all_tables() -> None:
-    # Import models to register them with Base
-    import app.db.models  # noqa: F401
+    """Compatibility alias for callers which historically initialized the schema."""
+    from app.db.migrate import upgrade_database
 
-    async with get_engine().begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    await upgrade_database(get_settings().database_url)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

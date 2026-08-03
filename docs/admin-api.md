@@ -2,8 +2,113 @@
 
 All admin endpoints require `Authorization: Bearer <PROXY_MASTER_KEY>`.
 
+For interactive MCP review, the opt-in [admin dashboard](admin-dashboard.md) provides a protected approval inbox over
+the same durable backend lifecycle.
+
+The dashboard also exposes read-only, cookie-authenticated browser endpoints:
+
+- `GET /admin/api/overview?days=7` for aggregate usage, daily traffic, rankings, and control-plane counts;
+- `GET /admin/api/users?q=&days=30&limit=100&offset=0` for the searchable user inventory;
+- `GET /admin/api/users/{user_id}?days=30` for limits, usage, model breakdown, and safe API-key metadata.
+- `GET /admin/api/mcp/grants?include_inactive=true&limit=200` for standing approval-grant inventory.
+- `GET /admin/api/mcp/servers` for live remote-server health, latency, tools, and input schemas;
+- `GET /admin/api/mcp/policies` and `POST /admin/api/mcp/policies/simulate` for policy inventory and dry runs.
+
+These endpoints accept dashboard sessions, not the master key. Raw API keys and hashes are never returned.
+
+## MCP approval grants
+
+The master-key API can create, list, and revoke bounded grants for automation and break-glass operations:
+
+```bash
+curl -X POST "https://relay.example.com/internal/mcp/grants" \
+  -H "Authorization: Bearer $MASTER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subject_type":"team",
+    "subject_id":"<team-id>",
+    "server":"code",
+    "tool":"test_*",
+    "constraints":{"allowed_values":{"runtime":["python"]}},
+    "ttl_seconds":28800,
+    "max_calls":50,
+    "workflow_id":"release-184",
+    "reason":"Reviewed release validation workflow"
+  }'
+
+curl "https://relay.example.com/internal/mcp/grants?include_inactive=true" \
+  -H "Authorization: Bearer $MASTER_KEY"
+
+curl -X DELETE "https://relay.example.com/internal/mcp/grants/<grant-id>" \
+  -H "Authorization: Bearer $MASTER_KEY"
+```
+
+Dashboard admins have equivalent CSRF-protected `POST` and `DELETE /admin/api/mcp/grants` operations. Viewers and
+approvers can read inventory, but only admins can create or revoke arbitrary grants. The subject and server must
+already exist. A grant is valid only for its recorded policy version; activating a new version stops it from matching.
+
 For the MCP approval queue and its role in Responses API pause/resume workflows, see
 [Responses API with Relay MCP](mcp-responses.md#decide-the-relay-approval).
+
+## MCP policy control plane
+
+The master-key API supports policy validation, immutable draft creation, simulation, and audited activation or
+rollback. Policy documents use the same `default_action` and `rules` shape as `mcp.policies` in configuration.
+
+```bash
+# Validate without saving
+curl -X POST "https://relay.example.com/internal/mcp/policies/validate" \
+  -H "Authorization: Bearer $MASTER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"document":{"default_action":"deny","rules":[]}}'
+
+# Save an immutable draft
+curl -X POST "https://relay.example.com/internal/mcp/policies/drafts" \
+  -H "Authorization: Bearer $MASTER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"version":"2026-08-01","base_version":"2026-07-30","reason":"Restrict production tools","document":{"default_action":"deny","rules":[]}}'
+
+# Simulate the draft with exact caller context and arguments
+curl -X POST "https://relay.example.com/internal/mcp/policies/simulate" \
+  -H "Authorization: Bearer $MASTER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"version":"2026-08-01","user_id":"<user-id>","team_id":"<team-id>","scopes":["mcp:code:execute"],"server":"code","tool":"execute","arguments":{"runtime":"python"}}'
+
+# Activate, or roll back by activating an earlier immutable version
+curl -X POST "https://relay.example.com/internal/mcp/policies/2026-08-01/activate" \
+  -H "Authorization: Bearer $MASTER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"Approved in change request CR-184"}'
+```
+
+`GET /internal/mcp/policies` returns the active document, all configured and database versions, diffs from active, and
+the append-only activation history. Dashboard sessions have equivalent `/admin/api/mcp/policies...` routes; all roles
+may read, validate, and simulate, while only admins may create or activate versions. Every mutation requires an audit
+reason. Policy activation also makes approvals and standing grants from earlier versions stale.
+
+## Dashboard role management
+
+OIDC dashboard access uses durable `viewer`, `approver`, and `admin` assignments. These endpoints remain protected by
+the master key so role administration is separate from interactive dashboard sessions:
+
+```bash
+curl -X PUT "http://localhost:8000/internal/admin-roles/<user-id>" \
+  -H "Authorization: Bearer $MASTER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"role":"approver"}'
+
+curl "http://localhost:8000/internal/admin-roles?role=approver" \
+  -H "Authorization: Bearer $MASTER_KEY"
+
+curl "http://localhost:8000/internal/admin-identities" \
+  -H "Authorization: Bearer $MASTER_KEY"
+
+curl -X DELETE "http://localhost:8000/internal/admin-roles/<user-id>" \
+  -H "Authorization: Bearer $MASTER_KEY"
+```
+
+The identity directory contains verified OIDC email, display name, last-seen time, Relay user ID, and current role.
+Role changes are audited and enforced on the user's next dashboard request.
 
 ## User and key management
 
@@ -152,7 +257,7 @@ Returns immediately with `{"status": "started", ...}` — sync runs in the backg
 **Debug retrieval:**
 
 ```bash
-# Run a raw vector search; shows distances and threshold pass/fail per chunk
+# Run the production hybrid search path with ranking diagnostics
 curl "http://localhost:8000/internal/kb/search?q=authentication+middleware&n=5&repo=myorg/backend" \
   -H "Authorization: Bearer $MASTER_KEY"
 ```
@@ -165,8 +270,12 @@ Response:
   "threshold": 0.75,
   "results": [
     {
+      "doc_id": "a4d2f98b72e6c941",
       "distance": 0.61,
       "above_threshold": false,
+      "lexical_score": 1.284721,
+      "fused_score": 0.032522,
+      "rerank_score": null,
       "source": "myorg/backend/middleware/auth.go",
       "symbol": "AuthMiddleware",
       "doc_type": "code",
@@ -176,8 +285,9 @@ Response:
 }
 ```
 
-`above_threshold: false` means the chunk passes the filter and would be injected into context. `distance` is cosine
-distance (0 = identical, 1 = orthogonal); lower is more similar.
+`distance` is the dense cosine distance (lower is more similar). Lexical-only candidates may remain in the final list
+even when `above_threshold` is true; `fused_score` is the production reciprocal-rank-fusion score. When a cross-encoder
+is configured, `rerank_score` determines final order.
 
 **Stats:**
 
@@ -220,7 +330,7 @@ network-layer control protects the endpoint.
 | `relay_cache_hits_total`            | Counter   | Cache hits, labelled `model`                                            |
 | `relay_pii_entities_scrubbed_total` | Counter   | PII entities removed                                                    |
 | `relay_pii_requests_affected_total` | Counter   | Requests that contained PII                                             |
-| `relay_rag_retrievals_total`        | Counter   | RAG lookups, labelled `status` (`hit`/`miss`)                           |
+| `relay_rag_retrievals_total`        | Counter   | RAG lookups, labelled `status` (`hit`/`miss`/`blocked`)                 |
 | `relay_rag_chunks_retrieved`        | Histogram | Chunks retrieved per request                                            |
 | `relay_rate_limit_hits_total`       | Counter   | Rate limit rejections, labelled `limit_type`                            |
 | `relay_content_policy_blocks_total` | Counter   | Content policy rejections                                               |

@@ -10,17 +10,18 @@ PII scrubbing ensures sensitive data is never sent to an LLM provider. Entities 
 ```
 User prompt:    "My name is Alice Smith, email alice@example.com"
                           ↓  stage 05: scrub
-To LLM:         "My name is <<PII_PERSON_a3f8>>, email <<PII_EMAIL_ADDRESS_b1c2>>"
+To LLM:         "My name is <<PII_PERSON_3ab…>>, email <<PII_EMAIL_ADDRESS_7ce…>>"
                           ↓  LLM responds
-From LLM:       "Hello <<PII_PERSON_a3f8>>! I'll contact you at <<PII_EMAIL_ADDRESS_b1c2>>"
+From LLM:       "Hello <<PII_PERSON_3ab…>>! I'll contact you at <<PII_EMAIL_ADDRESS_7ce…>>"
                           ↓  stage 09: restore
 Client gets:    "Hello Alice Smith! I'll contact you at alice@example.com"
 ```
 
-The placeholder `<<PII_ENTITY_TYPE_hash>>` is:
+The placeholder `<<PII_ENTITY_TYPE_request-local-id>>` is:
 - **Deterministic** — same input value always produces the same placeholder within a request
 - **Reversible** — the mapping is stored in request context and used to restore values in the response
-- **Opaque** — the hash is a truncated SHA-256 of the original value; the original cannot be derived from the placeholder
+- **Opaque** — the identifier is a random 128-bit value and contains no original PII
+- **Collision-resistant** — distinct values of the same entity type receive distinct placeholders
 
 ## Detected entities
 
@@ -35,6 +36,7 @@ Configured in `config.yaml` under `pii.entities`:
 | `US_SSN` | 123-45-6789 |
 | `IP_ADDRESS` | 192.168.1.1 |
 | `LOCATION` | 221B Baker Street, London |
+| `INTERNAL_SECRET` | OpenAI-style keys, GitHub tokens, Bearer tokens |
 
 Add or remove entity types in `config.yaml`:
 
@@ -48,6 +50,7 @@ pii:
     - US_SSN
     - IP_ADDRESS
     - LOCATION
+    - INTERNAL_SECRET
 ```
 
 ## Allow list
@@ -73,15 +76,17 @@ pii:
   score_threshold: 0.7
 ```
 
-## Code and diff handling
+## Coverage and code handling
 
-Messages that are git diffs (containing `diff --git` or a unified hunk header `@@ -N,N +N,N @@`) are passed through **without scrubbing**. Variable names, class names, and other identifiers in code produce too many false positives to make scrubbing useful in this context.
+Relay scans system/developer instructions, message text, typed text blocks, tool-call arguments, Responses API function arguments, code blocks, and git diffs. Content format never bypasses scrubbing. Add stable class names or product terms to `pii.allow_list` when the NER model produces a known false positive.
 
-Regular code blocks inside ` ``` ` fences are still scrubbed — a docstring or comment inside a code block can contain real emails or phone numbers.
+Caller-originated values use reversible placeholders. PII found in retrieved knowledge-base context is instead replaced with an irreversible `<<REDACTED_ENTITY>>` marker and is never added to the response restoration map.
+High-confidence `INTERNAL_SECRET` matches are also irreversible in caller content, so a provider token cannot be
+reintroduced if a model echoes its marker.
 
 ## Engine
 
-Detection uses **Microsoft Presidio** with a spaCy `en_core_web_lg` NER backend. The spaCy model is loaded on startup (it's ~800 MB — this is why probes have a 60-second initial delay).
+Detection uses **Microsoft Presidio** with a configurable spaCy backend (`en_core_web_sm` by default). The model is loaded on startup, so readiness may take longer than liveness during a cold start.
 
 ## Disabling
 

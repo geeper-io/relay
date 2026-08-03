@@ -110,7 +110,7 @@ async def list_api_keys(
     return list(result.scalars())
 
 
-async def revoke_api_key(db: AsyncSession, *, key_id: str) -> ApiKey | None:
+async def revoke_api_key(db: AsyncSession, *, key_id: str, actor: str = "admin") -> ApiKey | None:
     """Revoke a key and record the lifecycle event in the same transaction."""
     key = await db.scalar(select(ApiKey).where(ApiKey.id == key_id))
     if key is None:
@@ -124,7 +124,7 @@ async def revoke_api_key(db: AsyncSession, *, key_id: str) -> ApiKey | None:
                 user_id=key.user_id,
                 action="admin.api_key.revoked",
                 resource=key.id,
-                metadata_={"actor": "admin", "key_prefix": key.key_prefix, "name": key.name},
+                metadata_={"actor": actor, "key_prefix": key.key_prefix, "name": key.name},
             )
         )
         await db.commit()
@@ -138,6 +138,7 @@ async def rotate_api_key(
     key_id: str,
     expires_at: datetime | None = None,
     preserve_expiry: bool = True,
+    actor: str = "admin",
 ) -> tuple[str, ApiKey, ApiKey] | None:
     """Atomically revoke an active key and create a policy-equivalent replacement."""
     old_key = await db.scalar(select(ApiKey).where(ApiKey.id == key_id))
@@ -164,7 +165,7 @@ async def rotate_api_key(
             action="admin.api_key.rotated",
             resource=new_key.id,
             metadata_={
-                "actor": "admin",
+                "actor": actor,
                 "previous_key_id": old_key.id,
                 "previous_key_prefix": old_key.key_prefix,
                 "new_key_prefix": new_key.key_prefix,

@@ -88,8 +88,40 @@ async def responses(
     try:
         policy_messages = response_policy_messages(request_body)
         policy.check(policy_messages)
-        count_messages = [message.model_dump(exclude_none=True) for message in policy_messages]
-        estimated_tokens = llm_client.count_tokens(model, count_messages)
+        scrubbed_input, scrubbed_instructions, restoration_map, pii_count = scrub_response_payload(
+            request_body,
+            scrubber,
+        )
+        rag_used = False
+        rag_chunks = 0
+        if settings.rag_enabled:
+            rag_repo = raw_request.headers.get("x-relay-repo")
+            rag_filters = rag_filter_for_identity(identity, rag_repo, require_acl=settings.rag_require_acl)
+            context, rag_chunks = await retriever.retrieve_context(last_user_text(request_body), filters=rag_filters)
+            if context and policy.contains_blocked_pattern(context):
+                rag_chunks = 0
+                m.RAG_RETRIEVALS.labels(status="blocked").inc()
+            elif context:
+                context, context_pii_count = scrubber.scrub_untrusted_text(context)
+                pii_count += context_pii_count
+                scrubbed_input = inject_response_context(scrubbed_input, context)
+                rag_used = True
+                m.RAG_RETRIEVALS.labels(status="hit").inc()
+            else:
+                m.RAG_RETRIEVALS.labels(status="miss").inc()
+        m.RAG_CHUNKS_RETRIEVED.observe(rag_chunks)
+        if pii_count:
+            m.PII_ENTITIES_SCRUBBED.inc(pii_count)
+            m.PII_REQUESTS_AFFECTED.inc()
+
+        enriched_policy_request = request_body.model_copy(
+            update={"input": scrubbed_input, "instructions": scrubbed_instructions}
+        )
+        estimated_tokens = llm_client.count_tokens(
+            model,
+            [message.model_dump(exclude_none=True) for message in response_policy_messages(enriched_policy_request)],
+        )
+        policy.check_token_count(estimated_tokens)
         await rate_limiter.check_and_consume(
             identity.user_id,
             identity.team_id,
@@ -100,28 +132,6 @@ async def responses(
             team_tpm_limit=identity.team_tpm_limit,
             team_daily_token_limit=identity.team_daily_token_limit,
         )
-
-        scrubbed_input, scrubbed_instructions, restoration_map, pii_count = scrub_response_payload(
-            request_body,
-            scrubber,
-        )
-        if pii_count:
-            m.PII_ENTITIES_SCRUBBED.inc(pii_count)
-            m.PII_REQUESTS_AFFECTED.inc()
-
-        rag_used = False
-        rag_chunks = 0
-        if settings.rag_enabled:
-            rag_repo = raw_request.headers.get("x-relay-repo")
-            rag_filters = rag_filter_for_identity(identity, rag_repo, require_acl=settings.rag_require_acl)
-            context, rag_chunks = await retriever.retrieve_context(last_user_text(request_body), filters=rag_filters)
-            if context:
-                scrubbed_input = inject_response_context(scrubbed_input, context)
-                rag_used = True
-                m.RAG_RETRIEVALS.labels(status="hit").inc()
-            else:
-                m.RAG_RETRIEVALS.labels(status="miss").inc()
-        m.RAG_CHUNKS_RETRIEVED.observe(rag_chunks)
 
         trace_metadata = build_trace_metadata(
             user_id=identity.user_id,

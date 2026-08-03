@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.core.exceptions import AuthorizationError
-from app.db.models import AuditLog, MCPApproval
+from app.db.models import AuditLog, MCPApproval, MCPApprovalGrantOffer
 
 
 def arguments_hash(arguments: dict[str, Any]) -> str:
@@ -35,6 +35,7 @@ async def create_approval(
     policy_version: str,
     ttl_seconds: int,
     request_id: str,
+    grant_template: dict[str, Any] | None = None,
 ) -> MCPApproval:
     now = datetime.now(timezone.utc)
     approval = MCPApproval(
@@ -51,6 +52,8 @@ async def create_approval(
         expires_at=now + timedelta(seconds=ttl_seconds),
     )
     db.add(approval)
+    if grant_template:
+        db.add(MCPApprovalGrantOffer(approval_id=approval.id, template=grant_template))
     db.add(
         _audit(
             request_id,
@@ -66,6 +69,24 @@ async def create_approval(
 
 async def get_approval(db: AsyncSession, approval_id: str) -> MCPApproval | None:
     return await db.scalar(select(MCPApproval).where(MCPApproval.id == approval_id))
+
+
+async def get_grant_offer(db: AsyncSession, approval_id: str) -> MCPApprovalGrantOffer | None:
+    return await db.get(MCPApprovalGrantOffer, approval_id)
+
+
+async def list_grant_offers(
+    db: AsyncSession,
+    approval_ids: list[str],
+) -> dict[str, dict[str, Any]]:
+    if not approval_ids:
+        return {}
+    offers = list(
+        (
+            await db.scalars(select(MCPApprovalGrantOffer).where(MCPApprovalGrantOffer.approval_id.in_(approval_ids)))
+        ).all()
+    )
+    return {offer.approval_id: offer.template for offer in offers}
 
 
 async def list_approvals(
@@ -101,6 +122,17 @@ async def decide_approval(
     approval.decided_at = now
     approval.decided_by = actor
     approval.decision_reason = reason
+    offer = await get_grant_offer(db, approval.id)
+    if decision == "approved" and offer is not None:
+        from app.mcp.approval_grants import create_grant_from_approval
+
+        await create_grant_from_approval(
+            db,
+            approval=approval,
+            template=offer.template,
+            actor=actor,
+            request_id=request_id,
+        )
     db.add(
         _audit(
             request_id,

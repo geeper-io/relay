@@ -49,6 +49,7 @@ export default defineConfig({
         {
           label: "Admin",
           items: [
+            { label: "Dashboard", slug: "docs/admin/dashboard" },
             { label: "Teams & Keys", slug: "docs/admin/teams-and-keys" },
             { label: "Knowledge Base", slug: "docs/admin/knowledge-base" },
             { label: "Usage Reporting", slug: "docs/admin/usage-reporting" },

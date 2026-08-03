@@ -23,7 +23,9 @@ Drop-in OpenAI & Anthropic compatible. Deploy to Kubernetes in minutes.
 - **PII scrubbing** — strips personal data from requests before they leave your network using Microsoft Presidio (
   NLP-based) and custom regex patterns; restores placeholders in responses
 - **ACL-aware RAG / internal knowledge base** — API-key scopes restrict which repositories can contribute context;
-  ChromaDB vector search with AST-aware chunking for 15+ languages (tree-sitter)
+  hybrid dense/lexical retrieval, reciprocal-rank fusion, optional cross-encoder reranking, and context budgets improve
+  exact-symbol and semantic recall while retaining source provenance; ChromaDB stores AST-aware chunks for 15+
+  languages (tree-sitter)
 - **Code review** — sync GitHub and GitLab repositories into the knowledge base; when you send a diff for review,
   Relay automatically injects relevant context from the indexed codebase so the model can reason about your actual
   conventions, patterns, and dependencies
@@ -39,9 +41,13 @@ Drop-in OpenAI & Anthropic compatible. Deploy to Kubernetes in minutes.
 - **OpenTelemetry** — optional OTLP traces correlated with Langfuse and routing metadata
 - **OIDC SSO** — provider discovery for Entra ID, Okta, Keycloak, Auth0, and other OpenID Connect providers
 - **Evaluation harness** — compare deployment aliases using JSONL cases, deterministic graders, latency, and token reports
-- **MCP gateway** — remote tool discovery, granular scopes, versioned allow/deny/approval policies, argument-bound
-  one-time approvals, JSON Schema validation, output scrubbing, auditable Streamable HTTP brokering, and native
-  `/v1/responses` pause/resume flows backed by short-lived delegated credentials
+- **MCP gateway** — remote tool discovery, granular scopes, versioned allow/deny/approval policies, bounded user/team
+  approval grants, JSON Schema validation, output scrubbing, auditable Streamable HTTP brokering, and native
+  `/v1/responses` flows backed by short-lived delegated credentials
+- **Admin MCP governance** — an opt-in, same-origin dashboard for remote-server health and tool inventory, immutable
+  policy drafts, validation, simulation, activation and rollback, exact-call review, and bounded standing grants
+- **Self-service developer portal** — SSO-backed personal usage and limits, scoped key creation/rotation/revocation,
+  and copy-ready OpenAI, Anthropic, Claude Code, MCP, and Responses API setup
 - **Content policy** — blocks prompt-injection patterns and oversized inputs
 - **Langfuse analytics** — optional per-request LLM tracing with user IDs, session grouping, and cost
 - **Admin API** — manage users, teams, and API keys; pull usage reports
@@ -144,6 +150,10 @@ Services started by compose: `proxy` (port 8000), `postgres`, `prometheus` (port
 ```bash
 pip install -r requirements-dev.txt
 
+# Apply or inspect relational schema migrations
+python -m app.db.migrate upgrade
+python -m app.db.migrate current
+
 # Run tests
 pytest
 
@@ -157,14 +167,35 @@ RAG__ENABLED=false PII__ENABLED=false uvicorn app.main:app --reload
 Tests use SQLite in-memory and skip RAG by default. PII tests require a spaCy model (
 `python -m spacy download en_core_web_sm`).
 
+Relay also runs the migration wrapper at startup. It recognizes databases created by releases that predate Alembic,
+stamps the latest complete historical schema stage, and applies only the missing revisions. Production deployments can
+run the same command explicitly before rolling out application instances.
+
+### Admin dashboard demo
+
+Run an isolated local demo with synthetic users, teams, usage, API keys, roles, MCP approvals, standing grants, remote
+server health, and active/draft/archived MCP policy versions:
+
+```bash
+./scripts/run_admin_demo.sh
+```
+
+Then open `http://127.0.0.1:8000/admin` and sign in with `relay-demo-master-key-2026`. The launcher uses the project's
+virtual environment. The demo disables external AI,
+RAG, PII, and telemetry integrations; its temporary SQLite database is removed when you press Ctrl-C. Use `--port`,
+`--seed`, or `--database` to choose another port, reproduce a dataset, or retain the database locally.
+
 ---
 
 ## Further reading
 
+- [Developer portal](docs/developer-portal.md) — personal usage and limits, self-service key lifecycle, and integration
+  setup
+- [Admin dashboard](docs/admin-dashboard.md) — usage overview, user operations, OIDC roles, approvals, and grants
 - [Responses API with Relay MCP](docs/mcp-responses.md) — delegated credentials, policy-aware tool discovery,
   approval pause/resume, security properties, and troubleshooting
 - [Configuration reference](docs/configuration.md) — LLM providers, routing policies, PII, RAG, repo sync / code
   review, rate limiting, caching, content policy, OIDC, OpenTelemetry, and Langfuse
 - [Helm reference](docs/helm.md) — production values, scaling, secret management
-- [Admin API](docs/admin-api.md) — user/key management, usage reports, leaderboards, knowledge base management,
+- [Admin API](docs/admin-api.md) — dashboard roles, user/key management, usage reports, knowledge base management, and
   Prometheus metrics

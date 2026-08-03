@@ -97,11 +97,29 @@ def test_instructions_and_input_share_response_scrubbing():
     assert count == 2
 
 
+def test_function_call_arguments_are_included_in_response_scrubbing():
+    request = ResponsesRequest(
+        input=[
+            {
+                "type": "function_call",
+                "name": "send_email",
+                "arguments": '{"recipient":"alice@example.com"}',
+            }
+        ]
+    )
+    scrubbed, restoration_map, count = scrub_response_input(request, _FakeScrubber())
+
+    assert count == 1
+    assert "alice@example.com" not in scrubbed[0]["arguments"]
+    assert restoration_map
+
+
 def test_context_injection_handles_string_input():
-    assert inject_response_context("hello", "internal context") == [
-        {"role": "system", "content": "internal context"},
-        {"role": "user", "content": "hello"},
-    ]
+    injected = inject_response_context("hello", "internal context")
+    assert injected[0]["role"] == "system"
+    assert "untrusted reference material" in injected[0]["content"]
+    assert "<relay_retrieved_context>\ninternal context\n</relay_retrieved_context>" in injected[0]["content"]
+    assert injected[1] == {"role": "user", "content": "hello"}
 
 
 def test_response_output_restoration_and_usage_helpers():

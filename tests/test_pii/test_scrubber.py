@@ -61,14 +61,15 @@ def test_no_pii_unchanged(scrubber):
     assert scrubbed[0]["content"] == messages[0]["content"]
 
 
-def test_system_message_not_scrubbed(scrubber):
+def test_system_message_is_scrubbed(scrubber):
     messages = [
         {"role": "system", "content": "You are a helpful assistant for john@example.com"},
         {"role": "user", "content": "Hello"},
     ]
     scrubbed, rmap, count = scrubber.scrub_messages(messages)
-    # System message preserved
-    assert scrubbed[0]["content"] == messages[0]["content"]
+    assert "john@example.com" not in scrubbed[0]["content"]
+    assert count > 0
+    assert rmap
 
 
 def test_employee_id_scrubbed(scrubber, restorer):
@@ -96,8 +97,8 @@ def test_disabled_pii_passthrough():
     assert scrubbed == messages
 
 
-def test_git_diff_not_scrubbed(scrubber):
-    """git diff output passes through without PII scrubbing."""
+def test_git_diff_is_scrubbed(scrubber):
+    """PII in code review payloads must not bypass the provider boundary."""
     diff = (
         "diff --git a/app/config.py b/app/config.py\n"
         "--- a/app/config.py\n"
@@ -107,12 +108,12 @@ def test_git_diff_not_scrubbed(scrubber):
     )
     messages = [{"role": "user", "content": diff}]
     scrubbed, rmap, count = scrubber.scrub_messages(messages)
-    assert scrubbed[0]["content"] == diff
-    assert count == 0
+    assert "john@example.com" not in scrubbed[0]["content"]
+    assert count > 0
+    assert rmap
 
 
-def test_unified_diff_hunk_header_not_scrubbed(scrubber):
-    """diff -u / svn diff / patch output (no 'diff --git' line) passes through."""
+def test_unified_diff_hunk_header_is_scrubbed(scrubber):
     diff = (
         "--- a/main.py\t2024-01-01\n"
         "+++ b/main.py\t2024-01-02\n"
@@ -123,17 +124,18 @@ def test_unified_diff_hunk_header_not_scrubbed(scrubber):
     )
     messages = [{"role": "user", "content": diff}]
     scrubbed, rmap, count = scrubber.scrub_messages(messages)
-    assert scrubbed[0]["content"] == diff
-    assert count == 0
+    assert "admin@corp.com" not in scrubbed[0]["content"]
+    assert count > 0
+    assert rmap
 
 
-def test_hunk_only_diff_not_scrubbed(scrubber):
-    """A message that is just a hunk (no file headers) is also skipped."""
+def test_hunk_only_diff_is_scrubbed(scrubber):
     diff = "@@ -1,3 +1,4 @@\n-old line\n+new line with john@example.com\n"
     messages = [{"role": "user", "content": diff}]
     scrubbed, rmap, count = scrubber.scrub_messages(messages)
-    assert scrubbed[0]["content"] == diff
-    assert count == 0
+    assert "john@example.com" not in scrubbed[0]["content"]
+    assert count > 0
+    assert rmap
 
 
 def test_regular_code_block_still_scrubbed(scrubber):
@@ -189,7 +191,83 @@ def test_same_value_gets_same_placeholder(scrubber):
     # Extract all placeholders that replaced the email
     import re
 
-    placeholders = re.findall(r"<<PII_EMAIL_ADDRESS_[a-f0-9]{8}>>", content)
+    placeholders = re.findall(r"<<PII_EMAIL_ADDRESS_[a-f0-9]{32}>>", content)
     assert len(placeholders) >= 1
     # All occurrences must be the same placeholder
     assert len(set(placeholders)) == 1
+
+
+def test_distinct_values_of_same_entity_restore_independently(scrubber, restorer):
+    messages = [
+        {
+            "role": "user",
+            "content": "Email alice@example.com and bob@example.com",
+        }
+    ]
+    scrubbed, restoration_map, count = scrubber.scrub_messages(messages)
+
+    assert count >= 2
+    assert "alice@example.com" not in scrubbed[0]["content"]
+    assert "bob@example.com" not in scrubbed[0]["content"]
+    assert len(set(restoration_map.values()) & {"alice@example.com", "bob@example.com"}) == 2
+    assert restorer.restore(scrubbed[0]["content"], restoration_map).endswith(
+        "alice@example.com and bob@example.com"
+    )
+
+
+def test_tool_call_arguments_are_scrubbed(scrubber, restorer):
+    messages = [
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {
+                        "name": "send_email",
+                        "arguments": '{"recipient":"alice@example.com"}',
+                    },
+                }
+            ],
+        }
+    ]
+    scrubbed, restoration_map, count = scrubber.scrub_messages(messages)
+    arguments = scrubbed[0]["tool_calls"][0]["function"]["arguments"]
+
+    assert count > 0
+    assert "alice@example.com" not in arguments
+    assert "alice@example.com" in restorer.restore(arguments, restoration_map)
+
+
+def test_untrusted_context_is_irreversibly_redacted(scrubber, restorer):
+    scrubbed, count = scrubber.scrub_untrusted_text("Owner: alice@example.com")
+
+    assert count > 0
+    assert scrubbed == "Owner: <<REDACTED_EMAIL_ADDRESS>>"
+    assert restorer.restore(scrubbed, {}) == scrubbed
+
+
+def test_streaming_restoration_handles_128_bit_placeholder_boundaries(restorer):
+    placeholder = "<<PII_EMAIL_ADDRESS_0123456789abcdef0123456789abcdef>>"
+    chunks = ["Contact ", placeholder[:12], placeholder[12:41], placeholder[41:], " now"]
+
+    restored = "".join(restorer.restore_streaming(chunks, {placeholder: "alice@example.com"}))
+
+    assert restored == "Contact alice@example.com now"
+
+
+def test_secrets_are_never_added_to_restoration_map(restorer):
+    class SecretSettings(_FakeSettings):
+        pii_entities = ["INTERNAL_SECRET"]
+
+    scrubber = PIIScrubber(SecretSettings())
+    secret = "sk-abcdefghijklmnopqrstuvwxyz123456"
+
+    scrubbed, restoration_map, count = scrubber.scrub_messages(
+        [{"role": "user", "content": f"Use token {secret}"}]
+    )
+
+    assert count == 1
+    assert scrubbed[0]["content"] == "Use token <<REDACTED_INTERNAL_SECRET>>"
+    assert restoration_map == {}
+    assert secret not in restorer.restore(scrubbed[0]["content"], restoration_map)
